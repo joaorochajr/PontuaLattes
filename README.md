@@ -48,6 +48,57 @@ IC_COLLECT/
 - [SPA/app.js](SPA/app.js): integração com a API e renderização dos resultados
 - [SPA/styles.css](SPA/styles.css): estilos da interface
 
+## Requisitos para executar o projeto
+
+Para rodar o projeto completo localmente, é necessário ter:
+
+### Sistema e ambiente
+
+- sistema operacional com terminal disponível, como Linux, macOS ou Windows
+- navegador web moderno, como Chrome, Edge ou Firefox
+
+### Python
+
+- Python 3.10 ou superior
+- comando `python3` disponível no terminal
+
+### Bibliotecas Python utilizadas
+
+O backend usa apenas bibliotecas padrão do Python e a biblioteca `requests`.
+
+Dependências necessárias:
+
+- `requests`
+
+Se precisar instalar manualmente:
+
+```bash
+pip3 install requests
+```
+
+### Rede
+
+- acesso à internet para consultar o Lattes e o Buscatextual do CNPq
+- liberação de conexões HTTP/HTTPS para os domínios do Lattes
+
+### Porta local
+
+- porta `8000` livre para subir o servidor local
+
+Se a porta estiver ocupada, será necessário encerrar o processo que a está usando ou alterar a constante `PORT` em [API/main.py](API/main.py).
+
+### Estrutura esperada
+
+Para funcionar corretamente, o projeto espera esta organização:
+
+- [API](API) com os arquivos do backend
+- [SPA](SPA) com `index.html`, `app.js` e `styles.css`
+- [DB](DB), mesmo que ainda não esteja em uso
+
+### Observação importante
+
+O projeto depende do formato atual das páginas públicas do Lattes. Se o CNPq alterar a estrutura HTML ou os endpoints públicos, partes da coleta e do cálculo podem deixar de funcionar até ajuste no código.
+
 ## Como executar
 
 Na pasta [API](API), execute:
