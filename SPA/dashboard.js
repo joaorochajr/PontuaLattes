@@ -1,4 +1,10 @@
-document.addEventListener("DOMContentLoaded", carregarDashboard);
+document.addEventListener("DOMContentLoaded", () => {
+    criarGraficoVazio();  
+    carregarDashboard();      
+});
+let graficoNomes;
+let graficoDia;
+let graficoStatus;
 
 async function carregarDashboard() {
     const response = await fetch("http://127.0.0.1:8000/api/consultas");
@@ -13,6 +19,7 @@ async function carregarDashboard() {
     criarGraficoStatus(consultas);
     preencherTopUrls(consultas);
     preencherTabela(consultas);
+    atualizarGraficoNomes();
 }
 
 function preencherResumo(consultas) {
@@ -35,31 +42,45 @@ function criarGraficoPorDia(consultas) {
         agrupado[dia] = (agrupado[dia] || 0) + 1;
     });
 
-    new Chart(document.getElementById("grafico-acessos"), {
-        type: "line",
-        data: {
-            labels: Object.keys(agrupado),
-            datasets: [{
-                label: "Acessos",
-                data: Object.values(agrupado)
-            }]
-        }
-    });
+    const labels = Object.keys(agrupado);
+    const valores = Object.values(agrupado);
+
+    if (!graficoDia) {
+        graficoDia = new Chart(document.getElementById("grafico-acessos"), {
+            type: "line",
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: "Acessos",
+                    data: valores
+                }]
+            }
+        });
+    } else {
+        graficoDia.data.labels = labels;
+        graficoDia.data.datasets[0].data = valores;
+        graficoDia.update();
+    }
 }
 
 function criarGraficoStatus(consultas) {
     const sucessos = consultas.filter(c => c.success === 1).length;
     const falhas = consultas.length - sucessos;
 
-    new Chart(document.getElementById("grafico-status"), {
-        type: "doughnut",
-        data: {
-            labels: ["Sucesso", "Erro"],
-            datasets: [{
-                data: [sucessos, falhas]
-            }]
-        }
-    });
+    if (!graficoStatus) {
+        graficoStatus = new Chart(document.getElementById("grafico-status"), {
+            type: "doughnut",
+            data: {
+                labels: ["Sucesso", "Erro"],
+                datasets: [{
+                    data: [sucessos, falhas]
+                }]
+            }
+        });
+    } else {
+        graficoStatus.data.datasets[0].data = [sucessos, falhas];
+        graficoStatus.update();
+    }
 }
 
 function preencherTopUrls(consultas) {
@@ -77,11 +98,46 @@ function preencherTopUrls(consultas) {
         ordenado.map(([url, qtd]) => `<li>${url} (${qtd})</li>`).join("");
 }
 
+function criarGraficoVazio() {
+    graficoNomes = new Chart(document.getElementById("grafico-nomes"), {
+        type: "bar",
+        data: {
+            labels: [],
+            datasets: [{
+                label: "Total de Consultas",
+                data: [],
+                barThickness: 18
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false
+        }
+    });
+}
+
+async function atualizarGraficoNomes() {
+    const response = await fetch("/api/grafico-nomes");
+    const data = await response.json();
+
+    if (!data.success) return;
+
+    const top5 = data.dados
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 5);
+
+    graficoNomes.data.labels = top5.map(i => i.nome);
+    graficoNomes.data.datasets[0].data = top5.map(i => i.total);
+
+    graficoNomes.update();
+}
+
 function preencherTabela(consultas) {
     document.getElementById("tabela-consultas").innerHTML =
         consultas.map(c => `
             <tr>
                 <td>${c.id}</td>
+                <td>${c.nome || "-"}</td> 
                 <td>${c.url_informada}</td>
                 <td>${c.code}</td>
                 <td>${c.success === 1 ? "✅" : "❌"}</td>

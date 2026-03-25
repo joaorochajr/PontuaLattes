@@ -4,9 +4,8 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
-from database import get_all_consultas
+from database import get_all_consultas, get_consultas_por_nome
 from pathlib import Path
-
 
 
 from controller import buscaLattes
@@ -78,6 +77,12 @@ class ICCollectHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/health":
             self._send_json({"status": "ok"})
+            return
+        
+        if self.path == "/api/grafico-nomes":
+            dados = get_consultas_por_nome()
+            print(dados)
+            self._send_json({"success": True, "dados": dados})
             return
         
         if self.path.startswith("/api/consultas"):
@@ -172,7 +177,6 @@ class ICCollectHandler(BaseHTTPRequestHandler):
                 self._send_json({"success": False, "message": "Informe a URL completa ou o código.", "code": None}, HTTPStatus.BAD_REQUEST)
                 return
 
-            from controller import buscaLattes
             resultado = buscaLattes(url_lattes)
             status = HTTPStatus.OK if resultado.get("success") else HTTPStatus.BAD_GATEWAY
             self._send_json(resultado, status)
