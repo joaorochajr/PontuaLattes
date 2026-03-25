@@ -105,39 +105,80 @@ class ICCollectHandler(BaseHTTPRequestHandler):
         self._send_json({"success": False, "message": "Rota não encontrada."}, HTTPStatus.NOT_FOUND)
 
     def do_POST(self):
-        if self.path != "/api/lattes":
-            self._send_json({"success": False, "message": "Rota não encontrada."}, HTTPStatus.NOT_FOUND)
-            return
-
+        
         content_length = int(self.headers.get("Content-Length", "0"))
         raw_body = self.rfile.read(content_length).decode("utf-8") if content_length else "{}"
 
         try:
             payload = json.loads(raw_body or "{}")
         except json.JSONDecodeError:
-            self._send_json(
-                {"success": False, "message": "Corpo da requisição inválido."},
-                HTTPStatus.BAD_REQUEST,
-            )
+            self._send_json({"success": False, "message": "Corpo da requisição inválido."}, HTTPStatus.BAD_REQUEST)
             return
 
-        url_lattes = str(payload.get("url") or "").strip()
-        if not url_lattes:
-            self._send_json(
-                {
-                    "success": False,
-                    "message": "Informe a URL completa ou o código do currículo Lattes.",
-                    "code": None,
-                },
-                HTTPStatus.BAD_REQUEST,
-            )
+        
+        if self.path == "/api/register":
+            username = payload.get("username", "").strip()
+            password = payload.get("password", "")
+            
+            if not username or not password:
+                self._send_json({"success": False, "message": "Preencha todos os campos."}, HTTPStatus.BAD_REQUEST)
+                return
+                
+            from database import create_user
+            if create_user(username, password):
+                self._send_json({"success": True, "message": "Usuário registado com sucesso!"})
+            else:
+                self._send_json({"success": False, "message": "O utilizador já existe."}, HTTPStatus.CONFLICT)
             return
 
-        resultado = buscaLattes(url_lattes)
-        status = HTTPStatus.OK if resultado.get("success") else HTTPStatus.BAD_GATEWAY
-        self._send_json(resultado, status)
+   
+        elif self.path == "/api/login":
+            username = payload.get("username", "").strip()
+            password = payload.get("password", "")
+            
+            from database import verify_login
+            token = verify_login(username, password)
+            if token:
+                self._send_json({"success": True, "token": token, "message": "Login efetuado com sucesso."})
+            else:
+                self._send_json({"success": False, "message": "Utilizador ou palavra-passe inválidos."}, HTTPStatus.UNAUTHORIZED)
+            return
 
+       
+        elif self.path == "/api/logout":
+            auth_header = self.headers.get("Authorization", "")
+            if auth_header.startswith("Bearer "):
+                token = auth_header.split(" ")[1]
+                from database import delete_session
+                delete_session(token)
+            self._send_json({"success": True, "message": "Sessão terminada."})
+            return
 
+        elif self.path == "/api/lattes":
+            auth_header = self.headers.get("Authorization", "")
+            if not auth_header.startswith("Bearer "):
+                self._send_json({"success": False, "message": "Não autorizado. Faça login primeiro."}, HTTPStatus.UNAUTHORIZED)
+                return
+            
+            token = auth_header.split(" ")[1]
+            from database import get_user_id_by_token
+            if not get_user_id_by_token(token):
+                self._send_json({"success": False, "message": "Sessão inválida ou expirada."}, HTTPStatus.UNAUTHORIZED)
+                return
+
+           
+            url_lattes = str(payload.get("url") or "").strip()
+            if not url_lattes:
+                self._send_json({"success": False, "message": "Informe a URL completa ou o código.", "code": None}, HTTPStatus.BAD_REQUEST)
+                return
+
+            from controller import buscaLattes
+            resultado = buscaLattes(url_lattes)
+            status = HTTPStatus.OK if resultado.get("success") else HTTPStatus.BAD_GATEWAY
+            self._send_json(resultado, status)
+            return
+
+        self._send_json({"success": False, "message": "Rota não encontrada."}, HTTPStatus.NOT_FOUND)
 def run():
     init_database()
     server = ThreadingHTTPServer((HOST, PORT), ICCollectHandler)

@@ -284,6 +284,34 @@ function renderBarema(barema) {
 		: '';
 }
 
+const token = localStorage.getItem('auth_token');
+if (!token) {
+    window.location.href = '/login.html';
+}
+
+
+const logoutBtn = document.getElementById('logout-btn');
+if (logoutBtn) {
+	logoutBtn.addEventListener('click', async () => {
+		const token = localStorage.getItem('auth_token');
+		
+		if (token) {
+			
+			try {
+				await fetch('/api/logout', {
+					method: 'POST',
+					headers: { 'Authorization': `Bearer ${token}` }
+				});
+			} catch (e) {
+				console.error("Erro ao fazer logout na API", e);
+			}
+		}
+
+		
+		localStorage.removeItem('auth_token');
+		window.location.href = '/login.html';
+	});
+}
 form.addEventListener('submit', async (event) => {
 	event.preventDefault();
 	resetResults();
@@ -303,9 +331,15 @@ form.addEventListener('submit', async (event) => {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${token}`,
 			},
 			body: JSON.stringify({ url }),
 		});
+		if (response.status === 401) {
+			localStorage.removeItem('auth_token');
+			window.location.href = '/login.html';
+			return;
+		}
 
 		const resultado = await response.json();
 

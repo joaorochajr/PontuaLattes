@@ -1,11 +1,29 @@
 import json
 import sqlite3
 from pathlib import Path
+import hashlib
+import secrets
 
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR.parent / "DB" / "database.db"
 
+CREATE_USERS_TABLE = """
+CREATE TABLE IF NOT EXISTS users (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	username TEXT UNIQUE NOT NULL,
+	password_hash TEXT NOT NULL,
+	salt TEXT NOT NULL
+)
+"""
+CREATE_SESSIONS_TABLE = """
+CREATE TABLE IF NOT EXISTS sessions (
+	token TEXT PRIMARY KEY,
+	user_id INTEGER NOT NULL,
+	created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+)
+"""
 
 CREATE_CONSULTAS_TABLE = """
 CREATE TABLE IF NOT EXISTS consultas (
@@ -84,6 +102,8 @@ def init_database():
 		connection.execute(CREATE_CONSULTAS_CODE_INDEX)
 		connection.execute(CREATE_CONSULTAS_CREATED_AT_INDEX)
 		connection.execute(CREATE_BAREMA_CONSULTA_INDEX)
+		connection.execute(CREATE_USERS_TABLE)
+		connection.execute(CREATE_SESSIONS_TABLE)
 		connection.commit()
 
 
@@ -205,3 +225,48 @@ def registrar_barema(consulta_id, code, nome, barema_resultado):
 			),
 		)
 		connection.commit()
+def hash_password(password, salt=None):
+	if salt is None:
+		salt = secrets.token_hex(16)
+	
+	pwd_hash = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt.encode('utf-8'), 100000)
+	return pwd_hash.hex(), salt
+
+def create_user(username, password):
+	init_database()
+	pwd_hash, salt = hash_password(password)
+	try:
+		with _get_connection() as connection:
+			connection.execute(
+				"INSERT INTO users (username, password_hash, salt) VALUES (?, ?, ?)",
+				(username, pwd_hash, salt)
+			)
+			connection.commit()
+			return True
+	except sqlite3.IntegrityError:
+		return False # Usuário já existe
+
+def verify_login(username, password):
+	with _get_connection() as connection:
+		cursor = connection.execute("SELECT id, password_hash, salt FROM users WHERE username = ?", (username,))
+		user = cursor.fetchone()
+		if not user:
+			return None
+		
+		pwd_hash, _ = hash_password(password, user["salt"])
+		if pwd_hash == user["password_hash"]:
+			token = secrets.token_hex(32)
+			connection.execute("INSERT INTO sessions (token, user_id) VALUES (?, ?)", (token, user["id"]))
+			connection.commit()
+			return token
+		return None
+def delete_session(token):
+	with _get_connection() as connection:
+		connection.execute("DELETE FROM sessions WHERE token = ?", (token,))
+		connection.commit()
+
+def get_user_id_by_token(token):
+	with _get_connection() as connection:
+		cursor = connection.execute("SELECT user_id FROM sessions WHERE token = ?", (token,))
+		session = cursor.fetchone()
+		return session["user_id"] if session else None

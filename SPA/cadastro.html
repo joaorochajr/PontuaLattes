@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Cadastro - Barema Automático</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+	<main class="page" style="max-width: 500px;">
+		<section class="hero" style="text-align: center;">
+			<h1>Cadastro</h1>
+			<p>Crie sua conta para calcular os baremas do Lattes.</p>
+		</section>
+
+		<section class="panel form-panel">
+			<form id="auth-form">
+				<div>
+					<label for="username">Usuário</label>
+					<input id="username" type="text" required>
+				</div>
+				<div>
+					<label for="password">Senha</label>
+					<input id="password" type="password" required>
+				</div>
+				<button id="submit-button" type="submit" style="margin-top: 10px;">Cadastrar</button>
+				<div id="status" class="status" aria-live="polite"></div>
+			</form>
+            <p style="text-align: center; margin-top: 20px;">
+                Já tem uma conta? <a class="hero-link" href="/login.html">Fazer Login</a>
+            </p>
+		</section>
+	</main>
+    <script src="/auth.js" defer></script>
+</body>
+</html>
