@@ -108,6 +108,39 @@ def registrar_consulta(url_informada, resultado):
 		connection.commit()
 		return cursor.lastrowid
 
+def get_all_consultas(start_date=None, end_date=None, success=None):
+  
+    init_database()
+    query = """
+        SELECT id, url_informada, url_consultada, code, success, message, created_at
+        FROM consultas
+        WHERE 1=1
+    """
+    params = []
+
+    if start_date:
+        query += " AND date(created_at) >= date(?)"
+        params.append(start_date)
+
+    if end_date:
+        query += " AND date(created_at) <= date(?)"
+        params.append(end_date)
+
+    if success is not None:
+        query += " AND success = ?"
+        params.append(int(success))
+
+    query += " ORDER BY created_at DESC"
+
+    with _get_connection() as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+        cursor = connection.execute(query, params)
+        rows = cursor.fetchall()
+
+    # transforma em lista de dicionários
+    return [dict(row) for row in rows]
+
+
 
 def registrar_barema(consulta_id, code, nome, barema_resultado):
 	if not consulta_id or not code or not barema_resultado or not barema_resultado.get("success"):

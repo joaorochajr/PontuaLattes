@@ -3,6 +3,11 @@ import mimetypes
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlparse, parse_qs
+from database import get_all_consultas
+from pathlib import Path
+
+
 
 from controller import buscaLattes
 from database import init_database
@@ -16,8 +21,11 @@ PORT = 8000
 
 
 class ICCollectHandler(BaseHTTPRequestHandler):
+    
     def _resolve_static_path(self, request_path):
         relative_path = request_path.lstrip("/") or "index.html"
+
+       
         file_path = (SPA_DIR / relative_path).resolve()
 
         try:
@@ -25,7 +33,22 @@ class ICCollectHandler(BaseHTTPRequestHandler):
         except ValueError:
             return None
 
-        return file_path if file_path.exists() and file_path.is_file() else None
+       
+        if file_path.exists() and file_path.is_file():
+            return file_path
+
+       
+        html_path = (SPA_DIR / f"{relative_path}.html").resolve()
+
+        try:
+            html_path.relative_to(SPA_DIR.resolve())
+        except ValueError:
+            return None
+
+        if html_path.exists() and html_path.is_file():
+            return html_path
+
+        return None
 
     def _send_json(self, payload, status=HTTPStatus.OK):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -56,6 +79,19 @@ class ICCollectHandler(BaseHTTPRequestHandler):
         if self.path == "/health":
             self._send_json({"status": "ok"})
             return
+        
+        if self.path.startswith("/api/consultas"):
+            qs = parse_qs(urlparse(self.path).query)
+
+            start_date = qs.get("start_date", [None])[0]
+            end_date = qs.get("end_date", [None])[0]
+            success = qs.get("success", [None])[0]
+            success = int(success) if success is not None else None
+
+            consultas = get_all_consultas(start_date, end_date, success)
+            self._send_json({"success": True, "consultas": consultas})
+            return
+
 
         file_path = self._resolve_static_path(self.path)
         if file_path:
