@@ -3,11 +3,20 @@ import re
 from datetime import date
 from html import unescape
 
-from service import collect_lattes_data
+from service import getLattesCode, getLattesIndexHtml, getLattesPViewHtml
 
 
 # Armazena o conteúdo retornado
 conteudo_lattes = None
+
+
+def _is_request_error(value):
+	return isinstance(value, str) and (
+		"http" in value.lower()
+		or "erro" in value.lower()
+		or "failed" in value.lower()
+		or "timed out" in value.lower()
+	)
 
 
 def _normalizar_pontuacao(valor):
@@ -59,14 +68,106 @@ def _normalizar_serie(valores, tamanho):
 	return serie[:tamanho]
 
 
-def _somar_series_por_ano(variaveis_js, nome_anos, padroes, ano_minimo=None):
-	ano_minimo = _obter_ano_minimo_barema() if ano_minimo is None else ano_minimo
-	anos = variaveis_js.get(nome_anos) or []
-	indices_validos = [
+def _normalizar_anos(anos):
+	if not anos:
+		return []
+
+	anchors = [
+		(indice, int(ano))
+		for indice, ano in enumerate(anos)
+		if str(ano).isdigit()
+	]
+
+	if not anchors:
+		return [str(ano).strip() for ano in anos]
+
+	if len(anchors) == 1:
+		base = anchors[0][1] - anchors[0][0]
+		return [str(base + indice) for indice in range(len(anos))]
+
+	sequencia_continua = all(
+		indice_atual - indice_anterior == ano_atual - ano_anterior
+		for (indice_anterior, ano_anterior), (indice_atual, ano_atual) in zip(anchors, anchors[1:])
+	)
+
+	if sequencia_continua:
+		base = anchors[0][1] - anchors[0][0]
+		return [str(base + indice) for indice in range(len(anos))]
+
+	return [str(ano).strip() for ano in anos]
+
+
+def _indices_validos_anos(anos, ano_minimo):
+	anos = _normalizar_anos(anos)
+	return [
 		indice
 		for indice, ano in enumerate(anos)
 		if str(ano).isdigit() and int(ano) >= ano_minimo
 	]
+
+
+def extract_publications(index_html):
+	if not index_html:
+		return {"anos": [], "series": [], "anos_desde_2021": [], "series_desde_2021": [], "total_geral": 0}
+
+	variaveis_js = _extrair_variaveis_js(index_html)
+	years = _normalizar_anos(variaveis_js.get("barraAnosProducoesBibliograficas") or [])
+	labels = {
+		"valoresArtigosPublicadosPeriodicos": "Artigos completos publicados em periódicos",
+		"valoresArtigosResumidosPublicadosPeriodicos": "Resumos publicados em periódicos",
+		"valoresTrabalhosPublicadosEventos": "Trabalhos publicados em anais de evento",
+		"valoresTrabalhosResumidosPublicadosEventos": "Resumos publicados em anais de eventos",
+		"valoresLivros": "Livros",
+		"valoresCapitulos": "Capítulos de livros",
+		"valoresOutrasProducoesBibliograficas": "Outras produções bibliográficas",
+	}
+
+	series = []
+	for variable_name, label in labels.items():
+		values = _normalizar_serie(variaveis_js.get(variable_name), len(years))
+		total = sum(values)
+
+		if total == 0:
+			continue
+
+		series.append({
+			"nome": label,
+			"valores": values,
+			"por_ano": dict(zip(years, values)),
+			"total": total,
+		})
+
+	years_since_2021 = [year for year in years if str(year).isdigit() and int(year) >= 2021]
+	start_index = len(years) - len(years_since_2021)
+
+	series_since_2021 = []
+	for item in series:
+		values_since_2021 = item["valores"][start_index:] if years_since_2021 else []
+		total_since_2021 = sum(values_since_2021)
+
+		if total_since_2021 == 0:
+			continue
+
+		series_since_2021.append({
+			"nome": item["nome"],
+			"valores": values_since_2021,
+			"por_ano": dict(zip(years_since_2021, values_since_2021)),
+			"total": total_since_2021,
+		})
+
+	return {
+		"anos": years,
+		"series": series,
+		"anos_desde_2021": years_since_2021,
+		"series_desde_2021": series_since_2021,
+		"total_geral": sum(item["total"] for item in series),
+	}
+
+
+def _somar_series_por_ano(variaveis_js, nome_anos, padroes, ano_minimo=None):
+	ano_minimo = _obter_ano_minimo_barema() if ano_minimo is None else ano_minimo
+	anos = variaveis_js.get(nome_anos) or []
+	indices_validos = _indices_validos_anos(anos, ano_minimo)
 
 	if not indices_validos:
 		return 0
@@ -79,6 +180,22 @@ def _somar_series_por_ano(variaveis_js, nome_anos, padroes, ano_minimo=None):
 
 	total = 0
 	for nome_variavel in variaveis_encontradas:
+		serie = _normalizar_serie(variaveis_js.get(nome_variavel), len(anos))
+		total += sum(serie[indice] for indice in indices_validos)
+
+	return total
+
+
+def _somar_variaveis_por_ano(variaveis_js, nome_anos, nomes_variaveis, ano_minimo=None):
+	ano_minimo = _obter_ano_minimo_barema() if ano_minimo is None else ano_minimo
+	anos = variaveis_js.get(nome_anos) or []
+	indices_validos = _indices_validos_anos(anos, ano_minimo)
+
+	if not indices_validos:
+		return 0
+
+	total = 0
+	for nome_variavel in nomes_variaveis:
 		serie = _normalizar_serie(variaveis_js.get(nome_variavel), len(anos))
 		total += sum(serie[indice] for indice in indices_validos)
 
@@ -200,46 +317,42 @@ def calcularBarema(resultado=None):
 
 	nivel_titulacao, pontos_titulacao = _calcular_titulacao(preview_html)
 
-	quantidade_patentes = _contar_patentes(preview_html, index_html)
+	quantidade_patentes = _somar_variaveis_por_ano(
+		variaveis_js,
+		"barraAnosPatentes",
+		["valoesPatentes", "valoesOutrasPatentesRegistros", "valoesCultivarProtegida"],
+	)
+	if quantidade_patentes == 0:
+		quantidade_patentes = _contar_patentes(preview_html, index_html)
 	quantidade_producao_artistica = _somar_series_por_ano(
 		variaveis_js,
 		"barraAnosProducoesCulturais",
 		[("cultur",), ("artist",)],
 	)
-	quantidade_trabalho_tecnico = _somar_series_por_ano(
+	quantidade_trabalho_tecnico = _somar_variaveis_por_ano(
 		variaveis_js,
 		"barraAnosProducoesTecnicas",
-		[("trabalh", "tecn")],
+		["valoesTrabalhosTecnicos"],
 	)
-	quantidade_apresentacao_trabalho = _somar_series_por_ano(
+	quantidade_apresentacao_trabalho = _somar_variaveis_por_ano(
 		variaveis_js,
 		"barraAnosProducoesTecnicas",
-		[("apresent", "trabalh")],
+		["valoesApresentacoesDeTrabalhos"],
 	)
-	quantidade_orientacao_doutorado = _somar_series_por_ano(
+	quantidade_orientacao_doutorado = _somar_variaveis_por_ano(
 		variaveis_js,
 		"barraAnosOrientacoes",
-		[("orient", "dout")],
+		["valoresDoutorado"],
 	)
-	quantidade_orientacao_mestrado = _somar_series_por_ano(
+	quantidade_orientacao_mestrado = _somar_variaveis_por_ano(
 		variaveis_js,
 		"barraAnosOrientacoes",
-		[("orient", "mestr")],
+		["valoresMestrado"],
 	)
-	quantidade_orientacao_demais = _somar_series_por_ano(
+	quantidade_orientacao_demais = _somar_variaveis_por_ano(
 		variaveis_js,
 		"barraAnosOrientacoes",
-		[
-			("orient", "ic"),
-			("orient", "it"),
-			("orient", "tcc"),
-			("orient", "especial"),
-			("orient", "pibid"),
-			("orient", "pibex"),
-			("orient", "pet"),
-			("orient", "monitor"),
-			("orient", "inici"),
-		],
+		["valoresOutrasOrientacoes"],
 	)
 
 	producao_itens = {
@@ -328,7 +441,34 @@ def calcularBarema(resultado=None):
 
 # Busca os dados no service
 def buscaLattes(url):
-	resultado = collect_lattes_data(url)
+	code = getLattesCode(url)
+
+	if not code or _is_request_error(code):
+		resultado = {
+			"success": False,
+			"url": url,
+			"code": code,
+			"preview_html": None,
+			"index_html": None,
+			"publicacoes": {"anos": [], "series": [], "anos_desde_2021": [], "series_desde_2021": [], "total_geral": 0},
+			"message": "Não foi possível encontrar o código interno do currículo.",
+		}
+		conteudo = getConteudo(resultado)
+		conteudo["barema"] = calcularBarema()
+		return conteudo
+
+	preview_html = getLattesPViewHtml(code)
+	index_html = getLattesIndexHtml(code)
+	resultado = {
+		"success": bool(index_html),
+		"url": url,
+		"code": code,
+		"preview_html": preview_html,
+		"index_html": index_html,
+		"publicacoes": extract_publications(index_html),
+		"message": "Coleta realizada com sucesso." if index_html else "Não foi possível carregar os índices do currículo.",
+	}
+
 	conteudo = getConteudo(resultado)
 	conteudo["barema"] = calcularBarema()
 	return conteudo
