@@ -76,6 +76,23 @@ class ICCollectHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        if self.path == "/api/history":
+            auth_header = self.headers.get("Authorization", "")
+            if not auth_header.startswith("Bearer "):
+                self._send_json({"success": False, "message": "Acesso negado."}, HTTPStatus.UNAUTHORIZED)
+                return
+                
+            token = auth_header.split(" ")[1]
+            from database import get_user_id_by_token, get_historico_geral
+            
+        
+            if not get_user_id_by_token(token):
+                self._send_json({"success": False, "message": "Sessão inválida."}, HTTPStatus.UNAUTHORIZED)
+                return
+                
+            history = get_historico_geral()
+            self._send_json({"success": True, "history": history})
+            return
         if self.path == "/health":
             self._send_json({"status": "ok"})
             return
@@ -155,16 +172,16 @@ class ICCollectHandler(BaseHTTPRequestHandler):
             return
 
         elif self.path == "/api/lattes":
-            auth_header = self.headers.get("Authorization", "")
-            if not auth_header.startswith("Bearer "):
-                self._send_json({"success": False, "message": "Não autorizado. Faça login primeiro."}, HTTPStatus.UNAUTHORIZED)
+            url_lattes = str(payload.get("url") or "").strip()
+            if not url_lattes:
+                self._send_json({"success": False, "message": "Informe a URL completa ou o código.", "code": None}, HTTPStatus.BAD_REQUEST)
                 return
-            
-            token = auth_header.split(" ")[1]
-            from database import get_user_id_by_token
-            if not get_user_id_by_token(token):
-                self._send_json({"success": False, "message": "Sessão inválida ou expirada."}, HTTPStatus.UNAUTHORIZED)
-                return
+
+            from controller import buscaLattes
+            resultado = buscaLattes(url_lattes) # Sem o user_id
+            status = HTTPStatus.OK if resultado.get("success") else HTTPStatus.BAD_GATEWAY
+            self._send_json(resultado, status)
+            return
 
            
             url_lattes = str(payload.get("url") or "").strip()

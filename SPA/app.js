@@ -285,9 +285,6 @@ function renderBarema(barema) {
 }
 
 const token = localStorage.getItem('auth_token');
-if (!token) {
-    window.location.href = '/login.html';
-}
 
 
 const logoutBtn = document.getElementById('logout-btn');
@@ -300,7 +297,7 @@ if (logoutBtn) {
 			try {
 				await fetch('/api/logout', {
 					method: 'POST',
-					headers: { 'Authorization': `Bearer ${token}` }
+					
 				});
 			} catch (e) {
 				console.error("Erro ao fazer logout na API", e);
@@ -331,7 +328,7 @@ form.addEventListener('submit', async (event) => {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				'Authorization': `Bearer ${token}`,
+				
 			},
 			body: JSON.stringify({ url }),
 		});

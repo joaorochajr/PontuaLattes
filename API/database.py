@@ -270,3 +270,14 @@ def get_user_id_by_token(token):
 		cursor = connection.execute("SELECT user_id FROM sessions WHERE token = ?", (token,))
 		session = cursor.fetchone()
 		return session["user_id"] if session else None
+def get_historico_geral():
+	with _get_connection() as connection:
+		cursor = connection.execute(
+			"""
+			SELECT c.id, c.code, c.url_informada, c.created_at, c.success, b.nome, b.total_limitado 
+			FROM consultas c 
+			LEFT JOIN barema b ON c.code = b.code 
+			ORDER BY c.created_at DESC
+			"""
+		)
+		return [dict(row) for row in cursor.fetchall()]
