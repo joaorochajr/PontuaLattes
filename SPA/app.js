@@ -75,6 +75,7 @@ function renderSummary(resultado, previewHtml) {
 	const itens = [
 		['Nome', pesquisador],
 		['URL consultada', resultado.url || '-'],
+		['Código Lattes', resultado.code || '-'],
 		['Anos encontrados', anosLimpos.join(', ') || 'Nenhum'],
 		[
 			`Anos desde ${anoMinimo}`,
