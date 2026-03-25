@@ -2,7 +2,7 @@ document.addEventListener("DOMContentLoaded", () => {
     criarGraficoVazio();  
     carregarDashboard();      
 });
-let graficoNomes;
+let graficoTopUrls;
 let graficoDia;
 let graficoStatus;
 let paginaAtual = 1;
@@ -109,20 +109,45 @@ function criarGraficoStatus(consultas) {
 }
 
 function preencherTopUrls(consultas) {
+
+    const apenasSucessos = consultas.filter(c => c.success === 1);
+
     const contagem = {};
 
-    consultas.forEach(c => {
-        contagem[c.url_informada] = (contagem[c.url_informada] || 0) + 1;
+    apenasSucessos.forEach(c => {
+        const chave = c.nome || c.url_informada;
+        contagem[chave] = (contagem[chave] || 0) + 1;
     });
 
-    const ordenado = Object.entries(contagem)
+    const top5 = Object.entries(contagem)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 5);
 
-    document.getElementById("top-urls").innerHTML =
-        ordenado.map(([url, qtd]) => `<li>${url} (${qtd})</li>`).join("");
-}
+    const labels = top5.map(item => item[0]);
+    const valores = top5.map(item => item[1]);
 
+    if (!graficoTopUrls) {
+        graficoTopUrls = new Chart(document.getElementById("grafico-top-urls"), {
+            type: "bar",
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: "Consultas com Sucesso",
+                    data: valores
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false
+            }
+        });
+    } else {
+        graficoTopUrls.data.labels = labels;
+        graficoTopUrls.data.datasets[0].data = valores;
+        graficoTopUrls.update();
+    }
+}
 function criarGraficoVazio() {
     graficoNomes = new Chart(document.getElementById("grafico-nomes"), {
         type: "bar",
