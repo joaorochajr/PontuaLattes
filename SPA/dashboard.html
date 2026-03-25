@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - IC</title>
+    <link rel="stylesheet" href="./styles.css">
+</head>
+
+<body>
+
+    <main class="page">
+
+        <!-- HERO igual ao sistema principal -->
+        <section class="hero">
+            <span class="hero-badge">Painel Administrativo</span>
+            <h1>📊 Dashboard de Acessos</h1>
+            <p class="hero-lead">
+                Monitoramento das consultas realizadas no sistema.
+            </p>
+        </section>
+
+        <!-- RESUMO -->
+        <section class="panel form-panel">
+            <div class="summary">
+
+                <div class="stat-card panel">
+                    <h2>Total</h2>
+                    <div class="stat-value" id="total-consultas">0</div>
+                    <div class="stat-label">Consultas realizadas</div>
+                </div>
+
+                <div class="stat-card panel">
+                    <h2>Sucessos</h2>
+                    <div class="stat-value" id="total-sucessos">0</div>
+                    <div class="stat-label">Coletas bem sucedidas</div>
+                </div>
+
+                <div class="stat-card panel">
+                    <h2>Falhas</h2>
+                    <div class="stat-value" id="total-falhas">0</div>
+                    <div class="stat-label">Erros registrados</div>
+                </div>
+
+                <div class="stat-card panel">
+                    <h2>Taxa</h2>
+                    <div class="stat-value" id="taxa-sucesso">0%</div>
+                    <div class="stat-label">Taxa de sucesso</div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- GRÁFICOS -->
+        <section class="panel info-panel">
+            <h2>Acessos por Dia</h2>
+            <canvas id="grafico-acessos"></canvas>
+        </section>
+
+        <section class="panel info-panel">
+            <h2>Status das Consultas</h2>
+            <canvas id="grafico-status"></canvas>
+        </section>
+
+        <!-- TOP URLS -->
+        <section class="panel details-card">
+            <h2>Top URLs Informadas</h2>
+            <ul class="details-list" id="top-urls">
+                <li>Carregando...</li>
+            </ul>
+        </section>
+
+        <!-- TABELA -->
+        <section class="panel html-card">
+            <h2>Histórico de Consultas</h2>
+            <div class="barema-table-wrapper">
+                <table class="barema-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>URL</th>
+                            <th>Código</th>
+                            <th>Status</th>
+                            <th>Data</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabela-consultas">
+                        <tr>
+                            <td colspan="5">Carregando...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <footer class="footer panel">
+            <div class="footer-grid">
+                <div>
+                    <h2>Repositório</h2>
+                    <p>
+                        <a href="https://github.com/argalvao/IC_COLLECT" target="_blank">
+                            GitHub - IC_COLLECT
+                        </a>
+                    </p>
+                </div>
+                <div>
+                    <h2>Desenvolvedores</h2>
+                    <p>Abel Galvão, Alex Júnior e Bruno Campos</p>
+                </div>
+            </div>
+        </footer>
+
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="./dashboard.js" defer></script>
+
+</body>
+</html>
