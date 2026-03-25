@@ -38,7 +38,7 @@ form.addEventListener('submit', async (event) => {
 		if (isLogin) {
            
 			localStorage.setItem('auth_token', resultado.token);
-			window.location.href = '/index.html'; 
+			window.location.href = '/dashboard.html';
 		} else {
            
 			setTimeout(() => window.location.href = '/login.html', 1500);

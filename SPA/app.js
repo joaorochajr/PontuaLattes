@@ -284,83 +284,52 @@ function renderBarema(barema) {
 		: '';
 }
 
-const token = localStorage.getItem('auth_token');
-
-
-const logoutBtn = document.getElementById('logout-btn');
-if (logoutBtn) {
-	logoutBtn.addEventListener('click', async () => {
-		const token = localStorage.getItem('auth_token');
-		
-		if (token) {
-			
-			try {
-				await fetch('/api/logout', {
-					method: 'POST',
-					
-				});
-			} catch (e) {
-				console.error("Erro ao fazer logout na API", e);
-			}
-		}
-
-		
-		localStorage.removeItem('auth_token');
-		window.location.href = '/login.html';
-	});
-}
 form.addEventListener('submit', async (event) => {
-	event.preventDefault();
-	resetResults();
+    event.preventDefault();
+    resetResults();
 
-	const url = document.getElementById('lattes-url').value.trim();
-	if (!url) {
-		setStatus('error', 'Informe a URL completa ou o código do currículo Lattes.');
-		return;
-	}
+    const url = document.getElementById('lattes-url').value.trim();
+    if (!url) {
+        setStatus('error', 'Informe a URL completa ou o código do currículo Lattes.');
+        return;
+    }
 
-	submitButton.disabled = true;
-	submitButton.textContent = 'Consultando...';
-	setStatus('info', 'Consultando a API e coletando os dados do currículo...');
+    submitButton.disabled = true;
+    submitButton.textContent = 'Consultando...';
+    setStatus('info', 'Consultando a API e coletando os dados do currículo...');
 
-	try {
-		const response = await fetch('/api/lattes', {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				
-			},
-			body: JSON.stringify({ url }),
-		});
-		if (response.status === 401) {
-			localStorage.removeItem('auth_token');
-			window.location.href = '/login.html';
-			return;
-		}
+    try {
+        const response = await fetch('/api/lattes', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ url }),
+        });
 
-		const resultado = await response.json();
+        const resultado = await response.json();
 
-		if (!response.ok || !resultado.success) {
-			throw new Error(resultado.message || 'Não foi possível concluir a coleta.');
-		}
+        if (!response.ok || !resultado.success) {
+            throw new Error(resultado.message || 'Não foi possível concluir a coleta.');
+        }
 
-		const previewHtml = resultado.preview_html || '';
-		const publicacoes = resultado.publicacoes || {};
-		const seriesPeriodo = getFilteredPublicationSeries(publicacoes);
-		const barema = resultado.barema || null;
+        const previewHtml = resultado.preview_html || '';
+        const publicacoes = resultado.publicacoes || {};
+        const seriesPeriodo = getFilteredPublicationSeries(publicacoes);
+        const barema = resultado.barema || null;
 
-		statBaremaTotal.textContent = String(barema?.total_limitado || 0);
-		statTotal.textContent = String(publicacoes.total_geral || 0);
+        statBaremaTotal.textContent = String(barema?.total_limitado || 0);
+        statTotal.textContent = String(publicacoes.total_geral || 0);
 
-		renderSummary(resultado, previewHtml);
-		renderPublications(seriesPeriodo);
-		renderBarema(barema);
-		resultsSection.classList.add('visible');
-		setStatus('success', 'Coleta realizada com sucesso.');
-	} catch (error) {
-		setStatus('error', error.message || 'Erro inesperado ao chamar a API.');
-	} finally {
-		submitButton.disabled = false;
-		submitButton.textContent = 'Consultar';
-	}
+        renderSummary(resultado, previewHtml);
+        renderPublications(seriesPeriodo);
+        renderBarema(barema);
+        resultsSection.classList.add('visible');
+        setStatus('success', 'Coleta realizada com sucesso.');
+    } catch (error) {
+        setStatus('error', error.message || 'Erro inesperado ao chamar a API.');
+    } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = 'Consultar';
+    }
 });
