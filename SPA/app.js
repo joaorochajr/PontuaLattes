@@ -80,7 +80,7 @@ function renderSummary(resultado, previewHtml) {
 
 	const itens = [
 		['Nome', pesquisador],
-		['Código Lattes', resultado.code || '-'],
+		['Código Lattes:', resultado.code ? `http://buscatextual.cnpq.br/buscatextual/graficos.do?metodo=apresentar&codRHCript=${resultado.code}` : '-'],
 		[
 			`Período considerado (${anoMinimo} a ${anoAtual})`,
 			anosLimpos
