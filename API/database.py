@@ -7,7 +7,7 @@ import secrets
 
 
 BASE_DIR = Path(__file__).resolve().parent
-DB_PATH = BASE_DIR.parent / "DB" / "database.db"
+DB_PATH = Path(os.getenv("IC_COLLECT_DB_PATH", str(BASE_DIR.parent / "DB" / "database.db"))).expanduser()
 DEFAULT_DASHBOARD_USERNAME = os.getenv("DEFAULT_DASHBOARD_USERNAME", "admin")
 DEFAULT_DASHBOARD_PASSWORD = os.getenv("DEFAULT_DASHBOARD_PASSWORD", "pontualattes")
 
