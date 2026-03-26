@@ -30,7 +30,7 @@ class ICCollectHandler(BaseHTTPRequestHandler):
         return get_user_id_by_token(token)
     
     def _resolve_static_path(self, request_path):
-        relative_path = request_path.lstrip("/") or "index.html"
+        relative_path = urlparse(request_path).path.lstrip("/") or "index.html"
 
        
         file_path = (SPA_DIR / relative_path).resolve()
