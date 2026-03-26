@@ -284,34 +284,6 @@ function renderBarema(barema) {
 		`
 		: '';
 }
-
-const logoutBtn = document.getElementById('logout-btn');
-if (logoutBtn) {
-	if (!token) {
-		logoutBtn.style.display = 'none';
-	}
-
-	logoutBtn.addEventListener('click', async () => {
-		const token = localStorage.getItem('auth_token');
-		
-		if (token) {
-			
-			try {
-				await fetch('/api/logout', {
-					method: 'POST',
-					headers: { 'Authorization': `Bearer ${token}` }
-				});
-			} catch (e) {
-				console.error("Erro ao fazer logout na API", e);
-			}
-		}
-
-		
-		localStorage.removeItem('auth_token');
-		logoutBtn.style.display = 'none';
-		setStatus('success', 'Sessão encerrada com sucesso.');
-	});
-}
 form.addEventListener('submit', async (event) => {
 	event.preventDefault();
 	resetResults();
