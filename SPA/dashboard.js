@@ -1,85 +1,159 @@
 const token = localStorage.getItem("auth_token");
-
 if (!token) {
     window.location.href = "./login.html?redirect=dashboard.html";
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-    criarGraficoVazio();
-    carregarDashboard();      
-});
+// Variáveis de gráficos
 let graficoTopUrls;
 let graficoDia;
 let graficoStatus;
 let graficoNomes;
+
+// Paginação
 let paginaAtual = 1;
 const itensPorPagina = 10;
-let todasConsultas = [];
 
-async function carregarDashboard() {
-    const response = await fetch("/api/consultas", {
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
-    });
+// Inicializa dashboard
+document.addEventListener("DOMContentLoaded", () => {
+    criarGraficoVazio();
+    carregarDashboard();
+});
 
-    if (response.status === 401) {
-        localStorage.removeItem("auth_token");
-        window.location.href = "./login.html?redirect=dashboard.html";
-        return;
+/* ================================
+   FUNÇÕES DE FETCH (API)
+================================ */
+async function fetchConsultas(pagina = 1) {
+    try {
+        const response = await fetch(`/api/consultas?page=${pagina}&per_page=${itensPorPagina}`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (response.status === 401) {
+            localStorage.removeItem("auth_token");
+            window.location.href = "./login.html?redirect=dashboard.html";
+            return null;
+        }
+
+        const dados = await response.json();
+        return dados.success ? dados : null;
+    } catch (err) {
+        console.error("Erro ao buscar consultas:", err);
+        return null;
     }
-
-    const dados = await response.json();
-
-    if (!dados.success) return;
-
-    todasConsultas = dados.consultas;
-
-    preencherResumo(todasConsultas);
-    criarGraficoPorDia(todasConsultas);
-    criarGraficoStatus(todasConsultas);
-    preencherTopUrls(todasConsultas);
-    atualizarGraficoNomes();
-
-    renderizarTabela(); 
 }
 
-function preencherResumo(consultas) {
-    const total = consultas.length;
-    const sucessos = consultas.filter(c => c.success === 1).length;
-    const falhas = total - sucessos;
-    const taxa = total ? ((sucessos / total) * 100).toFixed(1) : 0;
-
-    document.getElementById("total-consultas").textContent = total;
-    document.getElementById("total-sucessos").textContent = sucessos;
-    document.getElementById("total-falhas").textContent = falhas;
-    document.getElementById("taxa-sucesso").textContent = taxa + "%";
+async function fetchResumo() {
+    try {
+        const response = await fetch(`/api/consultas/resumo`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        const dados = await response.json();
+        return dados.success ? dados : null;
+    } catch (err) {
+        console.error("Erro ao buscar resumo:", err);
+        return null;
+    }
 }
 
-function renderizarTabela() {
-    const inicio = (paginaAtual - 1) * itensPorPagina;
-    const fim = inicio + itensPorPagina;
-
-    const pagina = todasConsultas.slice(inicio, fim);
-
-    document.getElementById("tabela-consultas").innerHTML =
-        pagina.map(c => `
-            <tr>
-                <td>${c.id}</td>
-                <td>${c.nome || "-"}</td> 
-                <td>${c.url_informada}</td>
-                <td>${c.code}</td>
-                <td>${c.success === 1 ? "✅" : "❌"}</td>
-                <td>${c.created_at}</td>
-            </tr>
-        `).join("");
-
-    renderizarControles();
+async function fetchTopUrls() {
+    try {
+        const response = await fetch(`/api/consultas/top5`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        const dados = await response.json();
+        return dados.success ? dados.dados : [];
+    } catch (err) {
+        console.error("Erro ao buscar top URLs:", err);
+        return [];
+    }
 }
+/* 
+   Função de requisição da API para o TOP 5 de
+ */
+async function fetchTopNomes() {
+    try {
+        const response = await fetch(`/api/consultas/top5`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        const dados = await response.json();
+        return dados.success ? dados.dados : [];
+    } catch (err) {
+        console.error("Erro ao buscar top nomes:", err);
+        return [];
+    }
+}
+
+/* 
+   Função da tabela do histórico
+ */
+function gerarTabelaHistoricoConsultas(consultas, totalPaginas) {
+    const tabela = document.getElementById("tabela-consultas");
+    tabela.innerHTML = consultas.map(c => `
+        <tr>
+            <td>${c.id}</td>
+            <td>${c.nome || "-"}</td>
+            <td>${c.total_limitado || "-"}</td>
+            <td>${c.url_informada}</td>
+            <td>${c.code}</td>
+            <td>${c.success === 1 ? "✅" : "❌"}</td>
+            <td>${c.created_at}</td>
+        </tr>
+    `).join("");
+
+    renderizarControles(totalPaginas);
+}
+
+
+/* 
+   Resumo de falhas e sucessos
+ */
+function resumoConsulta(resumo) {
+    document.getElementById("total-consultas").textContent = resumo.total || 0;
+    document.getElementById("total-sucessos").textContent = resumo.sucessos || 0;
+    document.getElementById("total-falhas").textContent = resumo.falhas || 0;
+    document.getElementById("taxa-sucesso").textContent = resumo.total - resumo.sucessos;
+}
+
+/* 
+   Geração do gráfico do top 5 de URLS
+ */
+function gerarBarGraficoTopAcessos(topUrls) {
+    const labels = topUrls.map(i => i.nome);
+    const valores = topUrls.map(i => i.total);
+
+    if (!graficoTopUrls) {
+        graficoTopUrls = new Chart(document.getElementById("grafico-top-urls"), {
+            type: "bar",
+            data: { labels, datasets: [{ label: "Consultas com Sucesso", data: valores }] },
+            options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false }
+        });
+    } else {
+        graficoTopUrls.data.labels = labels;
+        graficoTopUrls.data.datasets[0].data = valores;
+        graficoTopUrls.update();
+    }
+}
+
+/* 
+   Geração inicial do gráfico
+ */
+function criarGraficoVazio() {
+    const canvas = document.getElementById("grafico-nomes");
+    if (!canvas) return;
+
+    graficoNomes = new Chart(canvas, {
+        type: "bar",
+        data: { labels: [], datasets: [{ label: "Total de Consultas", data: [], barThickness: 18 }] },
+        options: { responsive: true, maintainAspectRatio: false }
+    });
+}
+
+/* 
+   Gráfico de acesso por dias
+ */
 
 function criarGraficoPorDia(consultas) {
     const agrupado = {};
-
     consultas.forEach(c => {
         const dia = c.created_at.split(" ")[0];
         agrupado[dia] = (agrupado[dia] || 0) + 1;
@@ -91,13 +165,7 @@ function criarGraficoPorDia(consultas) {
     if (!graficoDia) {
         graficoDia = new Chart(document.getElementById("grafico-acessos"), {
             type: "line",
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: "Acessos",
-                    data: valores
-                }]
-            }
+            data: { labels, datasets: [{ label: "Acessos", data: valores }] }
         });
     } else {
         graficoDia.data.labels = labels;
@@ -106,19 +174,17 @@ function criarGraficoPorDia(consultas) {
     }
 }
 
-function criarGraficoStatus(consultas) {
-    const sucessos = consultas.filter(c => c.success === 1).length;
-    const falhas = consultas.length - sucessos;
+/* 
+   Gráfico de status de consulta
+ */
+function criarGraficoStatus(resumo) {
+    const sucessos = resumo.sucessos || 0;
+    const falhas = resumo.falhas || 0;
 
     if (!graficoStatus) {
         graficoStatus = new Chart(document.getElementById("grafico-status"), {
             type: "doughnut",
-            data: {
-                labels: ["Sucesso", "Erro"],
-                datasets: [{
-                    data: [sucessos, falhas]
-                }]
-            }
+            data: { labels: ["Sucesso", "Erro"], datasets: [{ data: [sucessos, falhas] }] }
         });
     } else {
         graficoStatus.data.datasets[0].data = [sucessos, falhas];
@@ -126,141 +192,56 @@ function criarGraficoStatus(consultas) {
     }
 }
 
-function preencherTopUrls(consultas) {
-
-    const apenasSucessos = consultas.filter(c => c.success === 1);
-
-    const contagem = {};
-
-    apenasSucessos.forEach(c => {
-        const chave = c.nome || c.url_informada;
-        contagem[chave] = (contagem[chave] || 0) + 1;
-    });
-
-    const top5 = Object.entries(contagem)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5);
-
-    const labels = top5.map(item => item[0]);
-    const valores = top5.map(item => item[1]);
-
-    if (!graficoTopUrls) {
-        graficoTopUrls = new Chart(document.getElementById("grafico-top-urls"), {
-            type: "bar",
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: "Consultas com Sucesso",
-                    data: valores
-                }]
-            },
-            options: {
-                indexAxis: 'y',
-                responsive: true,
-                maintainAspectRatio: false
-            }
-        });
-    } else {
-        graficoTopUrls.data.labels = labels;
-        graficoTopUrls.data.datasets[0].data = valores;
-        graficoTopUrls.update();
-    }
-}
-function criarGraficoVazio() {
-    const canvas = document.getElementById("grafico-nomes");
-
-    if (!canvas) {
-        return;
-    }
-
-    graficoNomes = new Chart(canvas, {
-        type: "bar",
-        data: {
-            labels: [],
-            datasets: [{
-                label: "Total de Consultas",
-                data: [],
-                barThickness: 18
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false
-        }
-    });
-}
-
-async function atualizarGraficoNomes() {
-    if (!graficoNomes) {
-        return;
-    }
-
-    const response = await fetch("/api/grafico-nomes");
-    const data = await response.json();
-
-    if (!data.success) return;
-
-    const top5 = data.dados
-        .sort((a, b) => b.total - a.total)
-        .slice(0, 5);
-
-    graficoNomes.data.labels = top5.map(i => i.nome);
-    graficoNomes.data.datasets[0].data = top5.map(i => i.total);
-
-    graficoNomes.update();
-}
-
-function renderizarControles() {
-    const totalPaginas = Math.ceil(todasConsultas.length / itensPorPagina);
+/* 
+   Renderização de controles e paginação
+ */
+function renderizarControles(totalPaginas) {
     const container = document.getElementById("paginacao");
+    container.innerHTML = "";
 
-    if (totalPaginas <= 1) {
-        container.innerHTML = "";
-        return;
-    }
+    const btnPrev = document.createElement("button");
+    btnPrev.textContent = "‹";
+    btnPrev.disabled = paginaAtual === 1;
+    btnPrev.addEventListener("click", () => mudarPagina(paginaAtual - 1));
+    container.appendChild(btnPrev);
 
-    let html = `<div class="pagination">`;
-
-    // Botão anterior
-    html += `
-        <button 
-            class="page-btn ${paginaAtual === 1 ? "disabled" : ""}" 
-            onclick="mudarPagina(${paginaAtual - 1})"
-            ${paginaAtual === 1 ? "disabled" : ""}
-        >
-            ‹
-        </button>
-    `;
-
-    // Números das páginas
     for (let i = 1; i <= totalPaginas; i++) {
-        html += `
-            <button 
-                class="page-btn ${i === paginaAtual ? "active" : ""}"
-                onclick="mudarPagina(${i})"
-            >
-                ${i}
-            </button>
-        `;
+        const btn = document.createElement("button");
+        btn.textContent = i;
+        btn.style.fontWeight = i === paginaAtual ? "bold" : "normal";
+        btn.addEventListener("click", () => mudarPagina(i));
+        container.appendChild(btn);
     }
 
-    // Botão próxima
-    html += `
-        <button 
-            class="page-btn ${paginaAtual === totalPaginas ? "disabled" : ""}" 
-            onclick="mudarPagina(${paginaAtual + 1})"
-            ${paginaAtual === totalPaginas ? "disabled" : ""}
-        >
-            ›
-        </button>
-    `;
-
-    html += `</div>`;
-
-    container.innerHTML = html;
+    const btnNext = document.createElement("button");
+    btnNext.textContent = "›";
+    btnNext.disabled = paginaAtual === totalPaginas;
+    btnNext.addEventListener("click", () => mudarPagina(paginaAtual + 1));
+    container.appendChild(btnNext);
+}
+/* 
+   Alteração de página
+ */
+function mudarPagina(novaPagina) {
+    if (novaPagina < 1) return;
+    paginaAtual = novaPagina;
+    carregarDashboard(paginaAtual);
 }
 
-function mudarPagina(novaPagina) {
-    paginaAtual = novaPagina;
-    renderizarTabela();
+/* 
+   Função para carregar a todas as componentes da dashboard
+ */
+async function carregarDashboard(pagina = 1) {
+    
+    const dadosConsultas = await fetchConsultas(pagina);
+    const resumo = await fetchResumo();
+    const topUrls = await fetchTopUrls();
+
+    if (!dadosConsultas || !resumo) return;
+
+    gerarTabelaHistoricoConsultas(dadosConsultas.consultas, dadosConsultas.total_pages);
+    resumoConsulta(resumo);
+    criarGraficoPorDia(dadosConsultas.consultas);
+    criarGraficoStatus(resumo);
+    gerarBarGraficoTopAcessos(topUrls);
 }
