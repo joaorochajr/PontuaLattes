@@ -146,8 +146,6 @@ def formatar_url_lattes(url_ou_numero):
 def registrar_consulta(url_informada, resultado):
 	init_database()
 
-	url_consultada_formatada = formatar_url_lattes(resultado.get("url"))
-
 	with _get_connection() as connection:
 		connection.execute("PRAGMA foreign_keys = ON")
 		cursor = connection.execute(
@@ -157,7 +155,7 @@ def registrar_consulta(url_informada, resultado):
 			""",
 			(
 				str(url_informada or "").strip(),
-				url_consultada_formatada,
+				resultado.get("url"),
 				resultado.get("code"),
 				1 if resultado.get("success") else 0,
 				resultado.get("message"),
