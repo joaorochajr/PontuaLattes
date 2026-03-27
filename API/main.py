@@ -8,7 +8,7 @@ from urllib.parse import urlparse, parse_qs
 
 
 from controller import buscaLattes
-from database import init_database, get_consultas, count_consultas, get_top5_consultas, verify_login,  get_user_id_by_token, delete_session
+from database import init_database, get_consultas, count_consultas, get_top5_consultas, verify_login,  get_user_id_by_token, delete_session, get_consultas_por_dia
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -109,6 +109,25 @@ class ICCollectHandler(BaseHTTPRequestHandler):
             })
 
             return
+        
+        if path == "/api/consultas/dia":
+
+            # Verifica autenticação
+            if not self._get_authenticated_user_id():
+                self._send_json(
+                    {"success": False, "message": "Não autorizado."},
+                    HTTPStatus.UNAUTHORIZED
+                )
+                return
+
+            # Chama a função do banco
+            dados = get_consultas_por_dia()
+
+            self._send_json({
+                "success": True,
+                "dados": dados
+            })
+            return
 
         if path == "/api/consultas":
 
@@ -140,6 +159,7 @@ class ICCollectHandler(BaseHTTPRequestHandler):
             })
 
             return
+            
         
         if path == "/api/consultas/resumo":
 

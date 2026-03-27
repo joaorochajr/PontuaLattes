@@ -131,9 +131,22 @@ def _ensure_default_dashboard_user(connection):
 		(DEFAULT_DASHBOARD_USERNAME, pwd_hash, salt),
 	)
 
+def formatar_url_lattes(url_ou_numero):
+    if not url_ou_numero:
+        return ""
+    
+    url_ou_numero = str(url_ou_numero).strip()
+    
+    if url_ou_numero.startswith("http://lattes.cnpq.br/"):
+        return url_ou_numero
+
+    return f"http://lattes.cnpq.br/{url_ou_numero}"
+
 
 def registrar_consulta(url_informada, resultado):
 	init_database()
+
+	url_consultada_formatada = formatar_url_lattes(resultado.get("url"))
 
 	with _get_connection() as connection:
 		connection.execute("PRAGMA foreign_keys = ON")
@@ -144,7 +157,7 @@ def registrar_consulta(url_informada, resultado):
 			""",
 			(
 				str(url_informada or "").strip(),
-				resultado.get("url"),
+				url_consultada_formatada,
 				resultado.get("code"),
 				1 if resultado.get("success") else 0,
 				resultado.get("message"),
@@ -217,6 +230,18 @@ def get_top5_consultas():
         {"nome": r["nome"], "code": r["code"], "total": r["total"]}
         for r in resultados
     ]
+
+def get_consultas_por_dia():
+    query = """
+    SELECT DATE(created_at) AS dia, COUNT(*) AS total
+    FROM consultas
+    GROUP BY DATE(created_at)
+    ORDER BY dia ASC
+    """
+    with _get_connection() as conn:
+        resultados = conn.execute(query).fetchall()
+    
+    return [{"dia": r["dia"], "total": r["total"]} for r in resultados]
 
 
 def registrar_barema(consulta_id, code, nome, barema_resultado):

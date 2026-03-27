@@ -15,13 +15,9 @@ const itensPorPagina = 10;
 
 // Inicializa dashboard
 document.addEventListener("DOMContentLoaded", () => {
-    criarGraficoVazio();
     carregarDashboard();
 });
 
-/* ================================
-   FUNÇÕES DE FETCH (API)
-================================ */
 async function fetchConsultas(pagina = 1) {
     try {
         const response = await fetch(`/api/consultas?page=${pagina}&per_page=${itensPorPagina}`, {
@@ -39,6 +35,20 @@ async function fetchConsultas(pagina = 1) {
     } catch (err) {
         console.error("Erro ao buscar consultas:", err);
         return null;
+    }
+}
+
+async function fetchConsultasPorDia() {
+    try {
+        const response = await fetch(`/api/consultas/dia`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+
+        const dados = await response.json();
+        return dados.success ? dados.dados : [];
+    } catch (err) {
+        console.error("Erro ao buscar consultas por dia:", err);
+        return [];
     }
 }
 
@@ -93,7 +103,7 @@ function gerarTabelaHistoricoConsultas(consultas, totalPaginas) {
             <td>${c.id}</td>
             <td>${c.nome || "-"}</td>
             <td>${c.total_limitado || "-"}</td>
-            <td>${c.url_informada}</td>
+            <td>${c.url_consultada}</td>
             <td>${c.code}</td>
             <td>${c.success === 1 ? "✅" : "❌"}</td>
             <td>${c.created_at}</td>
@@ -111,7 +121,7 @@ function resumoConsulta(resumo) {
     document.getElementById("total-consultas").textContent = resumo.total || 0;
     document.getElementById("total-sucessos").textContent = resumo.sucessos || 0;
     document.getElementById("total-falhas").textContent = resumo.falhas || 0;
-    document.getElementById("taxa-sucesso").textContent = resumo.total - resumo.sucessos;
+    document.getElementById("taxa-sucesso").textContent = ((resumo.sucessos / resumo.total) * 100).toFixed(1) + "%";
 }
 
 /* 
@@ -134,38 +144,32 @@ function gerarBarGraficoTopAcessos(topUrls) {
     }
 }
 
-/* 
-   Geração inicial do gráfico
- */
-function criarGraficoVazio() {
-    const canvas = document.getElementById("grafico-nomes");
-    if (!canvas) return;
-
-    graficoNomes = new Chart(canvas, {
-        type: "bar",
-        data: { labels: [], datasets: [{ label: "Total de Consultas", data: [], barThickness: 18 }] },
-        options: { responsive: true, maintainAspectRatio: false }
-    });
-}
 
 /* 
    Gráfico de acesso por dias
  */
 
-function criarGraficoPorDia(consultas) {
-    const agrupado = {};
-    consultas.forEach(c => {
-        const dia = c.created_at.split(" ")[0];
-        agrupado[dia] = (agrupado[dia] || 0) + 1;
-    });
-
-    const labels = Object.keys(agrupado);
-    const valores = Object.values(agrupado);
+function criarGraficoPorDia(dadosPorDia) {
+    const labels = dadosPorDia.map(item => item.dia);
+    const valores = dadosPorDia.map(item => item.total);
 
     if (!graficoDia) {
         graficoDia = new Chart(document.getElementById("grafico-acessos"), {
             type: "line",
-            data: { labels, datasets: [{ label: "Acessos", data: valores }] }
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: "Consultas por Dia",
+                    data: valores,
+                    fill: false,
+                    borderColor: "rgb(75, 192, 192)",
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false
+            }
         });
     } else {
         graficoDia.data.labels = labels;
@@ -189,6 +193,19 @@ function criarGraficoStatus(resumo) {
     } else {
         graficoStatus.data.datasets[0].data = [sucessos, falhas];
         graficoStatus.update();
+    }
+}
+
+async function fetchConsultasPorDia() {
+    try {
+        const response = await fetch(`/api/consultas/dia`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        const dados = await response.json();
+        return dados.success ? dados.dados : [];
+    } catch (err) {
+        console.error("Erro ao buscar consultas por dia:", err);
+        return [];
     }
 }
 
@@ -236,12 +253,13 @@ async function carregarDashboard(pagina = 1) {
     const dadosConsultas = await fetchConsultas(pagina);
     const resumo = await fetchResumo();
     const topUrls = await fetchTopUrls();
+    const consultasPorDia = await fetchConsultasPorDia();
 
     if (!dadosConsultas || !resumo) return;
 
     gerarTabelaHistoricoConsultas(dadosConsultas.consultas, dadosConsultas.total_pages);
     resumoConsulta(resumo);
-    criarGraficoPorDia(dadosConsultas.consultas);
+    criarGraficoPorDia(consultasPorDia);
     criarGraficoStatus(resumo);
     gerarBarGraficoTopAcessos(topUrls);
 }
