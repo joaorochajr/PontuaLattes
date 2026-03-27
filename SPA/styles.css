@@ -29,6 +29,40 @@ body {
 	color: var(--text);
 }
 
+.paginacao-container {
+    margin-top: 20px;   /* espaço embaixo da tabela */
+    text-align: center;  /* centraliza os botões */
+}
+
+.paginacao-container button {
+    margin: 0 5px;
+    padding: 6px 12px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background-color: #f5f5f5;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.paginacao-container button:hover:not(:disabled) {
+    background-color: #007bff;
+    color: white;
+    border-color: #007bff;
+}
+
+.paginacao-container button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.paginacao-container button.current {
+    font-weight: bold;
+    background-color: #007bff;
+    color: white;
+    border-color: #007bff;
+}
+
 canvas {
     max-height: 350px;
 }

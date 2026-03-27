@@ -54,7 +54,6 @@
             </div>
         </section>
 
-        <!-- GRÁFICOS -->
         <section class="panel info-panel">
             <h2>Acessos por Dia</h2>
             <canvas id="grafico-acessos"></canvas>
@@ -65,12 +64,16 @@
             <canvas id="grafico-status"></canvas>
         </section>
 
-        <!-- TOP URLS -->
-        <canvas id="grafico-top-urls"></canvas>
+        <section class="panel info-panel">
+            <h2>Ranking de Nomes Pesquisados</h2>
+            <canvas id="grafico-top-urls"></canvas>
+        </section>
 
-        <!-- TABELA -->
+
+
         <section class="panel html-card">
             <h2>Histórico de Consultas</h2>
+
             <div class="barema-table-wrapper">
                 <table class="barema-table">
                     <thead>
@@ -86,24 +89,17 @@
                     </thead>
                     <tbody id="tabela-consultas">
                         <tr>
-                            <td colspan="5">Carregando...</td>
+                            <td colspan="7">Carregando...</td>
                         </tr>
                     </tbody>
                 </table>
-                <div id="paginacao"></div>
+
+                <div id="paginacao" class="paginacao-container"></div>
             </div>
         </section>
 
         <footer class="footer panel">
             <div class="footer-grid">
-                <div>
-                    <h2>Repositório</h2>
-                    <p>
-                        <a href="https://github.com/argalvao/IC_COLLECT" target="_blank">
-                            GitHub - IC_COLLECT
-                        </a>
-                    </p>
-                </div>
                 <div>
                     <h2>Desenvolvedores</h2>
                     <p>Abel Galvão, Alex Júnior e Bruno Campos</p>
