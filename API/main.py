@@ -5,14 +5,12 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
-from database import get_all_consultas
 
 
 from controller import buscaLattes
-from database import init_database
-from database import get_user_id_by_token
-from database import delete_session
-from database import verify_login
+from database import init_database, get_consultas, count_consultas, get_top5_consultas, verify_login,  get_user_id_by_token, delete_session
+
+
 BASE_DIR = Path(__file__).resolve().parent
 SPA_DIR = BASE_DIR.parent / "SPA"
 INDEX_FILE = SPA_DIR / "index.html"
@@ -27,7 +25,6 @@ class ICCollectHandler(BaseHTTPRequestHandler):
             return None
 
         token = auth_header.split(" ", 1)[1]
-        
         return get_user_id_by_token(token)
     
     def _resolve_static_path(self, request_path):
@@ -84,33 +81,97 @@ class ICCollectHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        if self.path == "/health":
+
+        parsed_url = urlparse(self.path)
+        path = parsed_url.path
+        qs = parse_qs(parsed_url.query)
+    
+        if path == "/health":
             self._send_json({"status": "ok"})
             return
         
-        if self.path.startswith("/api/consultas"):
+        if path == "/api/consultas/top5":
+
+            # Verifica autenticação
             if not self._get_authenticated_user_id():
-                self._send_json({"success": False, "message": "Não autorizado. Faça login para acessar o histórico."}, HTTPStatus.UNAUTHORIZED)
+                self._send_json(
+                    {"success": False, "message": "Não autorizado."},
+                    HTTPStatus.UNAUTHORIZED
+                )
                 return
 
-            qs = parse_qs(urlparse(self.path).query)
+            dados = get_top5_consultas()
 
-            start_date = qs.get("start_date", [None])[0]
-            end_date = qs.get("end_date", [None])[0]
+            # Retorna o JSON
+            self._send_json({
+                "success": True,
+                "dados": dados
+            })
+
+            return
+
+        if path == "/api/consultas":
+
+            if not self._get_authenticated_user_id():
+                self._send_json(
+                    {"success": False, "message": "Não autorizado."},
+                    HTTPStatus.UNAUTHORIZED
+                )
+                return
+
+            page = int(qs.get("page", ["1"])[0])
+            per_page = int(qs.get("per_page", ["10"])[0])
+
             success = qs.get("success", [None])[0]
             success = int(success) if success is not None else None
 
-            consultas = get_all_consultas(start_date, end_date, success)
-            self._send_json({"success": True, "consultas": consultas})
+            consultas = get_consultas(success, page, per_page)
+            total = count_consultas(success)
+
+            total_pages = (total + per_page - 1) // per_page
+
+            self._send_json({
+                "success": True,
+                "consultas": consultas,
+                "total": total,
+                "page": page,
+                "per_page": per_page,
+                "total_pages": total_pages
+            })
+
             return
+        
+        if path == "/api/consultas/resumo":
 
+            if not self._get_authenticated_user_id():
+                self._send_json(
+                    {"success": False, "message": "Não autorizado."},
+                    HTTPStatus.UNAUTHORIZED
+                )
+                return
 
+            # Total geral
+            total = count_consultas()
+            # Total de sucessos
+            sucessos = count_consultas(1)
+            # Total de falhas
+            falhas = count_consultas(0)
+
+            self._send_json({
+                "success": True,
+                "total": total,
+                "sucessos": sucessos,
+                "falhas": falhas
+            })
+
+            return
+    
         file_path = self._resolve_static_path(self.path)
         if file_path:
             self._send_file(file_path)
             return
 
-        if self.path in ("/", "/index.html") and not INDEX_FILE.exists():
+        if path in ("/", "/index.html") and not INDEX_FILE.exists():
             self._send_html("<h1>Arquivo index.html não encontrado.</h1>", HTTPStatus.NOT_FOUND)
             return
 
@@ -137,7 +198,6 @@ class ICCollectHandler(BaseHTTPRequestHandler):
             username = payload.get("username", "").strip()
             password = payload.get("password", "")
             
-          
             token = verify_login(username, password)
             if token:
                 self._send_json({"success": True, "token": token, "message": "Login efetuado com sucesso."})
@@ -150,7 +210,6 @@ class ICCollectHandler(BaseHTTPRequestHandler):
             auth_header = self.headers.get("Authorization", "")
             if auth_header.startswith("Bearer "):
                 token = auth_header.split(" ")[1]
-                
                 delete_session(token)
             self._send_json({"success": True, "message": "Sessão terminada."})
             return
