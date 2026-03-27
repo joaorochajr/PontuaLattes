@@ -153,9 +153,9 @@ def registrar_consulta(url_informada, resultado):
 		connection.commit()
 		return cursor.lastrowid
 
-def get_all_consultas(start_date=None, end_date=None, success=None):
-  
-    init_database()
+def get_consultas(success=None, page=1, per_page=10):
+
+    offset = (page - 1) * per_page
 
     query = """
         SELECT 
@@ -166,33 +166,57 @@ def get_all_consultas(start_date=None, end_date=None, success=None):
             c.success,
             c.message,
             c.created_at,
-            b.nome
+            b.nome,
+            b.total_limitado
         FROM consultas c
         LEFT JOIN barema b ON c.code = b.code
         WHERE 1=1
     """
+
     params = []
-
-    if start_date:
-        query += " AND date(c.created_at) >= date(?)"
-        params.append(start_date)
-
-    if end_date:
-        query += " AND date(c.created_at) <= date(?)"
-        params.append(end_date)
 
     if success is not None:
         query += " AND c.success = ?"
-        params.append(int(success))
+        params.append(success)
 
-    query += " ORDER BY c.created_at DESC"
+    query += " ORDER BY c.created_at DESC LIMIT ? OFFSET ?"
+    params.extend([per_page, offset])
 
     with _get_connection() as connection:
-        connection.execute("PRAGMA foreign_keys = ON")
         cursor = connection.execute(query, params)
         rows = cursor.fetchall()
 
     return [dict(row) for row in rows]
+
+
+def count_consultas(success=None):
+	query = "SELECT COUNT(*) FROM consultas WHERE 1=1"
+	params = []
+
+	if success is not None:
+		query += " AND success = ?"
+		params.append(int(success))
+
+	with _get_connection() as connection:
+		return connection.execute(query, params).fetchone()[0]
+	
+def get_top5_consultas():
+	
+    query = """
+    SELECT b.nome, c.code, COUNT(*) AS total
+    FROM consultas c
+    JOIN barema b ON c.code = b.code
+    GROUP BY c.code, b.nome
+    ORDER BY total DESC
+    LIMIT 5
+    """
+    with _get_connection() as conn:
+        resultados = conn.execute(query).fetchall()
+
+    return [
+        {"nome": r["nome"], "code": r["code"], "total": r["total"]}
+        for r in resultados
+    ]
 
 
 def registrar_barema(consulta_id, code, nome, barema_resultado):
@@ -258,6 +282,7 @@ def registrar_barema(consulta_id, code, nome, barema_resultado):
 			),
 		)
 		connection.commit()
+
 def hash_password(password, salt=None):
 	if salt is None:
 		salt = secrets.token_hex(16)
