@@ -243,10 +243,10 @@ def _calcular_titulacao(preview_html):
 	texto = unescape(re.sub(r"<[^>]+>", " ", preview_html or ""))
 	texto = re.sub(r"\s+", " ", texto).strip().lower()
 
-	if re.search(r"\bdoutor(?:ado)?\b|\bphd\b", texto):
+	if re.search(r"\bdoutor(?:a|ado)?\b|\bph\.?d\b", texto):
 		return "Doutorado", 12
 
-	if re.search(r"\bmestrado\b|\bmestre\b", texto):
+	if re.search(r"\bmestrado\b|\bmestre\b|\bmestra\b", texto):
 		return "Mestrado", 8
 
 	return "Não identificado", 0
