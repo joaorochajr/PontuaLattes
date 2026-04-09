@@ -13,7 +13,7 @@ O sistema recebe uma URL pública do currículo Lattes ou apenas o código do cu
 Além da coleta e do cálculo, o projeto também oferece:
 
 - autenticação exclusiva para acesso ao dashboard
-- armazenamento das consultas em SQLite
+- armazenamento das consultas em Google Sheets
 - armazenamento do barema consolidado por currículo
 - dashboard com histórico das consultas realizadas
 - interface web integrada ao backend
@@ -43,6 +43,7 @@ Além da coleta e do cálculo, o projeto também oferece:
 ### Persistência e histórico
 
 - grava consultas realizadas
+- atualiza a consulta anterior quando o mesmo Lattes é consultado novamente
 - grava o barema associado ao currículo consultado
 - mantém nome da pessoa quando identificado
 - lista consultas no dashboard com paginação
@@ -64,8 +65,6 @@ IC_COLLECT/
 │   ├── database.py
 │   ├── main.py
 │   └── service.py
-├── DB/
-│   └── database.db
 ├── SPA/
 │   ├── app.js
 │   ├── auth.js
@@ -87,7 +86,7 @@ O projeto funciona como um serviço Python único que:
 2. expõe endpoints HTTP em [API/main.py](API/main.py)
 3. consulta os dados públicos do Lattes em [API/service.py](API/service.py)
 4. processa publicações e calcula o barema em [API/controller.py](API/controller.py)
-5. persiste dados em SQLite por meio de [API/database.py](API/database.py)
+5. persiste dados em Google Sheets por meio de [API/database.py](API/database.py)
 
 ## Componentes principais
 
@@ -113,10 +112,11 @@ O projeto funciona como um serviço Python único que:
 	- calcula pontuação do barema
 	- produz o payload final retornado pela API
 
+
 - [API/database.py](API/database.py)
-	- inicializa o banco SQLite
-	- cria tabelas e índices
-	- registra consultas
+	- inicializa a planilha usada como banco de dados
+	- garante a existência das abas necessárias
+	- registra consultas sem duplicar o mesmo Lattes
 	- registra baremas
 	- cria usuários
 	- valida login
@@ -178,14 +178,22 @@ Instalação:
 pip3 install -r requirements.txt
 ```
 
-Dependência atual:
+Dependências principais:
 
 - `requests>=2.31.0`
+- `gspread>=6.1.2`
+- `google-auth>=2.38.0`
 
 ### Banco de dados
 
-- SQLite nativo do Python
-- o arquivo é criado automaticamente em [DB/database.db](DB/database.db)
+- Google Sheets como base persistente
+- autenticação por conta de serviço do Google
+- uma aba para cada entidade: `consultas`, `barema`, `users` e `sessions`
+
+Variáveis de ambiente obrigatórias:
+
+- `GOOGLE_SHEETS_SPREADSHEET_ID`
+- `GOOGLE_SERVICE_ACCOUNT_JSON` ou `GOOGLE_SERVICE_ACCOUNT_FILE`
 
 ## Como executar localmente
 
@@ -193,6 +201,13 @@ Na raiz do projeto, instale as dependências:
 
 ```bash
 pip3 install -r requirements.txt
+```
+
+Antes de iniciar, configure a planilha e a conta de serviço:
+
+```bash
+export GOOGLE_SHEETS_SPREADSHEET_ID="SEU_ID_DA_PLANILHA"
+export GOOGLE_SERVICE_ACCOUNT_FILE="DB/pontuallates_key.json"
 ```
 
 Depois inicie a aplicação:
@@ -241,6 +256,7 @@ Na página principal [SPA/index.html](SPA/index.html):
 - o usuário informa uma URL ou código do Lattes
 - o frontend envia a requisição para `/api/lattes`
 - o backend consulta os dados públicos do currículo
+- se o mesmo currículo já tiver sido consultado antes, o sistema substitui o registro anterior pela consulta mais recente
 - o resultado é processado e devolvido ao frontend
 
 ### 3. Renderização dos resultados
@@ -438,9 +454,16 @@ Essa regra é aplicada no backend e refletida na interface.
 
 ## Persistência em banco de dados
 
-O banco é armazenado em [DB/database.db](DB/database.db).
+O banco agora é uma planilha do Google Sheets.
 
-### Tabela `users`
+Na primeira execução, a aplicação cria automaticamente as abas:
+
+- `users`
+- `sessions`
+- `consultas`
+- `barema`
+
+### Aba `users`
 
 Armazena usuários do sistema.
 
@@ -458,7 +481,7 @@ Campos principais:
 - `password_hash`
 - `salt`
 
-### Tabela `sessions`
+### Aba `sessions`
 
 Armazena sessões autenticadas.
 
@@ -468,9 +491,11 @@ Campos principais:
 - `user_id`
 - `created_at`
 
-### Tabela `consultas`
+### Aba `consultas`
 
-Armazena todas as consultas realizadas.
+Armazena somente a versão mais recente de cada consulta de Lattes.
+
+Quando a mesma URL pública ou o mesmo código do Lattes é consultado novamente, o registro anterior é atualizado em vez de duplicado.
 
 Campos principais:
 
@@ -482,7 +507,7 @@ Campos principais:
 - `message`
 - `created_at`
 
-### Tabela `barema`
+### Aba `barema`
 
 Armazena o barema consolidado por currículo.
 
