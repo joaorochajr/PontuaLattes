@@ -2,6 +2,7 @@
 
 import json
 import os
+import base64
 import hashlib
 import re
 import secrets
@@ -143,9 +144,42 @@ def _require_google_settings():
 		)
 
 
+def _parse_service_account_json(raw_value):
+	value = str(raw_value or "").strip()
+	if not value:
+		raise RuntimeError("GOOGLE_SERVICE_ACCOUNT_JSON está vazio.")
+
+	if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+		value = value[1:-1]
+
+	try:
+		return json.loads(value)
+	except json.JSONDecodeError:
+		decoded_value = base64.b64decode(value).decode("utf-8")
+		return json.loads(decoded_value)
+
+
+def _normalize_service_account_info(service_account_info):
+	info = dict(service_account_info or {})
+	private_key = str(info.get("private_key") or "").strip()
+	if private_key:
+		private_key = private_key.replace("\\n", "\n")
+		if "BEGIN PRIVATE KEY" in private_key and not private_key.endswith("\n"):
+			private_key = f"{private_key}\n"
+		info["private_key"] = private_key
+
+	if info.get("client_email"):
+		info["client_email"] = str(info["client_email"]).strip()
+
+	if not info.get("token_uri"):
+		info["token_uri"] = "https://oauth2.googleapis.com/token"
+
+	return info
+
+
 def _load_service_account_info():
 	if GOOGLE_SERVICE_ACCOUNT_JSON:
-		return json.loads(GOOGLE_SERVICE_ACCOUNT_JSON)
+		return _normalize_service_account_info(_parse_service_account_json(GOOGLE_SERVICE_ACCOUNT_JSON))
 
 	service_account_path = Path(GOOGLE_SERVICE_ACCOUNT_FILE).expanduser()
 	if not service_account_path.is_absolute():
@@ -156,7 +190,9 @@ def _load_service_account_info():
 			f"Arquivo da conta de serviço não encontrado em {service_account_path}."
 		)
 
-	return json.loads(service_account_path.read_text(encoding="utf-8"))
+	return _normalize_service_account_info(
+		json.loads(service_account_path.read_text(encoding="utf-8"))
+	)
 
 
 def _get_client():
