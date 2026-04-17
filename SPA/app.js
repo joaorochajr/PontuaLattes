@@ -13,6 +13,20 @@ const statBaremaTotal = document.getElementById('stat-barema-total');
 const statTotal = document.getElementById('stat-total');
 const token = localStorage.getItem('auth_token');
 
+
+
+const currentYear = getCurrentBaremaYear();
+
+
+const linkElement = document.getElementById('link-edital');
+
+if (linkElement) {
+  
+    linkElement.href = `http://www.pppg.uefs.br/arquivos/File/editais/IC/${currentYear}/Edital_IC_UEFS_${currentYear}.pdf`;
+  
+    linkElement.textContent = `Ver edital IC UEFS ${currentYear}`;
+}
+
 function setStatus(type, message) {
 	statusBox.className = `status visible ${type}`;
 	statusBox.textContent = message;
