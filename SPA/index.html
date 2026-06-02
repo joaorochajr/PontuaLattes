@@ -15,16 +15,10 @@
 				Sistema que analisa o currículo Lattes e organiza automaticamente o barema para apoiar a avaliação de candidatos a bolsas de Iniciação Científica da UEFS.
 			</p>
 			<div class="hero-meta">
-        <a 
-            id="link-edital" 
-            class="hero-link" 
-            href="#" 
-            target="_blank" 
-            rel="noopener noreferrer"
-        >
-            Ver edital IC UEFS
-        </a>
-    </div>
+				<a id="edital-link" class="hero-link" href="#" target="_blank" rel="noopener noreferrer" style="display:none">
+					Ver edital
+				</a>
+			</div>
 		</section>
 
 		<section class="panel form-panel">
@@ -41,6 +35,14 @@
 						>
 						<button id="submit-button" type="submit">Consultar</button>
 					</div>
+				</div>
+				<div class="edital-choice">
+					<label class="radio-label">
+						<input type="radio" name="edital" value="ic" checked> Edital IC
+					</label>
+					<label class="radio-label">
+						<input type="radio" name="edital" value="aeri"> Edital AERI
+					</label>
 				</div>
 				<p class="helper-text">
 					Informe a URL completa ou o código público do currículo Lattes.
@@ -77,7 +79,7 @@
 				<article class="panel stat-card">
 					<h2>Total do barema</h2>
 					<div id="stat-barema-total" class="stat-value">0</div>
-					<div class="stat-label">Pontuação máxima: 60 pontos</div>
+				<div id="stat-barema-label" class="stat-label">Pontuação máxima: 60 pontos</div>
 				</article>
 
 				<article class="panel stat-card">
@@ -97,8 +99,8 @@
 				<div id="publication-list" class="publication-list"></div>
 			</article>
 
-			<article class="panel details-card">
-				<h2>Barema docente</h2>
+			<article class="panel details-card" id="barema-card">
+				<h2 id="barema-card-title">Barema docente (Edital IC)</h2>
 				<div id="barema-summary" class="barema-summary"></div>
 				<div id="barema-sections" class="barema-sections"></div>
 				<div id="barema-observations" class="barema-observations"></div>

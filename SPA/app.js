@@ -13,19 +13,38 @@ const statBaremaTotal = document.getElementById('stat-barema-total');
 const statTotal = document.getElementById('stat-total');
 const token = localStorage.getItem('auth_token');
 
+let lastResultado = null;
+let editaisCarregados = { ic: {}, aeri: {} };
 
-
-const currentYear = getCurrentBaremaYear();
-
-
-const linkElement = document.getElementById('link-edital');
-
-if (linkElement) {
-  
-    linkElement.href = `http://www.pppg.uefs.br/arquivos/File/editais/IC/${currentYear}/Edital_IC_UEFS_${currentYear}.pdf`;
-  
-    linkElement.textContent = `Ver edital IC UEFS ${currentYear}`;
+async function inicializarEditais() {
+	try {
+		const response = await fetch('/api/editais');
+		const dados = await response.json();
+		if (dados.success) {
+			editaisCarregados = { ic: dados.ic || {}, aeri: dados.aeri || {} };
+		}
+	} catch (_) {}
+	atualizarLinkEdital();
 }
+
+function atualizarLinkEdital() {
+	const edital = document.querySelector('input[name="edital"]:checked')?.value || 'ic';
+	const info = editaisCarregados[edital] || {};
+	const link = document.getElementById('edital-link');
+	if (!link) return;
+	if (info.url) {
+		const ano = info.ano ? ` UEFS ${info.ano}` : '';
+		link.href = info.url;
+		link.textContent = `Ver edital ${edital.toUpperCase()}${ano}`;
+		link.style.display = '';
+	} else {
+		link.style.display = 'none';
+	}
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+	inicializarEditais();
+});
 
 function setStatus(type, message) {
 	statusBox.className = `status visible ${type}`;
@@ -331,6 +350,89 @@ function renderBarema(barema) {
 		`
 		: '';
 }
+
+function renderBaremaAERI(barema) {
+	const baremaCardTitle = document.getElementById('barema-card-title');
+
+	if (!barema || !barema.success) {
+		baremaSummary.innerHTML = '<div class="publication-item">Barema AERI não disponível.</div>';
+		baremaSections.innerHTML = '';
+		baremaObservations.innerHTML = '';
+		statBaremaTotal.textContent = '0';
+		return;
+	}
+
+	if (baremaCardTitle) baremaCardTitle.textContent = 'Barema discente (Edital AERI)';
+	statBaremaTotal.textContent = formatNumber(barema.total_limitado);
+
+	baremaSummary.innerHTML = `
+		<div class="barema-highlight-grid">
+			<div class="barema-highlight-item">
+				<span class="barema-highlight-label">Participações/Eventos</span>
+				<strong>${formatNumber(barema.participacoes_eventos?.subtotal_limitado)}</strong>
+			</div>
+			<div class="barema-highlight-item">
+				<span class="barema-highlight-label">Produção Científica</span>
+				<strong>${formatNumber(barema.producao_cientifica?.subtotal_limitado)}</strong>
+			</div>
+			<div class="barema-highlight-item">
+				<span class="barema-highlight-label">Representação/Liderança</span>
+				<strong>${formatNumber(barema.representacao_lideranca?.subtotal_limitado)}</strong>
+			</div>
+			<div class="barema-highlight-item">
+				<span class="barema-highlight-label">Programas/Estágios</span>
+				<strong>${formatNumber(barema.participacao_programas?.subtotal_limitado)}</strong>
+			</div>
+			<div class="barema-highlight-item barema-highlight-total">
+				<span class="barema-highlight-label">Total final</span>
+				<strong>${formatNumber(barema.total_limitado)}</strong>
+			</div>
+		</div>
+	`;
+
+	baremaSections.innerHTML = [
+		renderBaremaSection('I - Participações / Eventos', barema.participacoes_eventos || {}, '10'),
+		renderBaremaSection('II - Produção Científica', barema.producao_cientifica || {}, '10'),
+		renderBaremaSection('III - Representação / Liderança Estudantil', barema.representacao_lideranca || {}, '10'),
+		renderBaremaSection('IV - Participação em Programas / Estágios', barema.participacao_programas || {}, '10'),
+	].join('');
+
+	const observacoesAERI = barema.observacoes || [];
+	baremaObservations.innerHTML = observacoesAERI.length
+		? `
+			<h3>Observações</h3>
+			<ul class="details-list">
+				${observacoesAERI.map((item) => `<li>${item}</li>`).join('')}
+			</ul>
+		`
+		: '';
+}
+
+function renderFromResultado(resultado) {
+	if (!resultado) return;
+
+	const edital = document.querySelector('input[name="edital"]:checked')?.value || 'ic';
+	const baremaCardTitle = document.getElementById('barema-card-title');
+	const statLabel = document.getElementById('stat-barema-label');
+
+	if (edital === 'aeri') {
+		if (baremaCardTitle) baremaCardTitle.textContent = 'Barema discente (Edital AERI)';
+		if (statLabel) statLabel.textContent = 'Pontuação máxima: 40 pontos';
+		renderBaremaAERI(resultado.barema_aeri || null);
+	} else {
+		if (baremaCardTitle) baremaCardTitle.textContent = 'Barema docente (Edital IC)';
+		if (statLabel) statLabel.textContent = 'Pontuação máxima: 60 pontos';
+		renderBarema(resultado.barema || null);
+	}
+}
+
+document.querySelectorAll('input[name="edital"]').forEach((radio) => {
+	radio.addEventListener('change', () => {
+		atualizarLinkEdital();
+		if (lastResultado) renderFromResultado(lastResultado);
+	});
+});
+
 form.addEventListener('submit', async (event) => {
 	event.preventDefault();
 	resetResults();
@@ -340,6 +442,8 @@ form.addEventListener('submit', async (event) => {
 		setStatus('error', 'Informe a URL completa ou o código do currículo Lattes.');
 		return;
 	}
+
+	const edital = document.querySelector('input[name="edital"]:checked')?.value || 'ic';
 
 	submitButton.disabled = true;
 	submitButton.textContent = 'Consultando...';
@@ -351,7 +455,7 @@ form.addEventListener('submit', async (event) => {
 			headers: {
 				'Content-Type': 'application/json',
 			},
-			body: JSON.stringify({ url }),
+			body: JSON.stringify({ url, tipo: edital }),
 		});
 
 		const responseText = await response.text();
@@ -374,14 +478,13 @@ form.addEventListener('submit', async (event) => {
 		const previewHtml = resultado.preview_html || '';
 		const publicacoes = resultado.publicacoes || {};
 		const seriesPeriodo = getFilteredPublicationSeries(publicacoes);
-		const barema = resultado.barema || null;
 
-		statBaremaTotal.textContent = String(barema?.total_limitado || 0);
 		statTotal.textContent = String(publicacoes.total_geral || 0);
 
 		renderSummary(resultado, previewHtml);
 		renderPublications(seriesPeriodo);
-		renderBarema(barema);
+		lastResultado = resultado;
+		renderFromResultado(resultado);
 		resultsSection.classList.add('visible');
 		setStatus('success', 'Coleta realizada com sucesso.');
 	} catch (error) {
