@@ -4,23 +4,43 @@ if (!token) {
 }
 
 // Variáveis de gráficos
-let graficoTopUrls;
-let graficoDia;
-let graficoStatus;
-let graficoNomes;
 
 // Paginação
 let paginaAtual = 1;
 const itensPorPagina = 10;
 
+// Aba ativa (ic | aeri)
+let tabAtiva = "ic";
+
 // Inicializa dashboard
 document.addEventListener("DOMContentLoaded", () => {
     carregarDashboard();
+    carregarEditais();
+
+    document.querySelectorAll(".btn-salvar-edital").forEach((btn) => {
+        btn.addEventListener("click", () => salvarEdital(btn.dataset.tipo));
+    });
+
+    document.querySelectorAll(".tab-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            tabAtiva = btn.dataset.tab;
+            document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+
+            const titulo = document.getElementById("historico-title");
+            if (titulo) {
+                titulo.textContent = `Histórico de Consultas — Edital ${tabAtiva.toUpperCase()}`;
+            }
+
+            paginaAtual = 1;
+            carregarDashboard(1);
+        });
+    });
 });
 
 async function fetchConsultas(pagina = 1) {
     try {
-        const response = await fetch(`/api/consultas?page=${pagina}&per_page=${itensPorPagina}`, {
+        const response = await fetch(`/api/consultas?page=${pagina}&per_page=${itensPorPagina}&tipo=${tabAtiva}`, {
             headers: { Authorization: `Bearer ${token}` }
         });
 
@@ -88,19 +108,7 @@ function renderizarLink(url) {
     return `<a class="soft-link" href="${urlEscapada}" target="_blank" rel="noopener noreferrer">${urlEscapada}</a>`;
 }
 
-async function fetchConsultasPorDia() {
-    try {
-        const response = await fetch(`/api/consultas/dia`, {
-            headers: { Authorization: `Bearer ${token}` }
-        });
 
-        const dados = await response.json();
-        return dados.success ? dados.dados : [];
-    } catch (err) {
-        console.error("Erro ao buscar consultas por dia:", err);
-        return [];
-    }
-}
 
 async function fetchResumo() {
     try {
@@ -115,33 +123,7 @@ async function fetchResumo() {
     }
 }
 
-async function fetchTopUrls() {
-    try {
-        const response = await fetch(`/api/consultas/top5`, {
-            headers: { Authorization: `Bearer ${token}` }
-        });
-        const dados = await response.json();
-        return dados.success ? dados.dados : [];
-    } catch (err) {
-        console.error("Erro ao buscar top URLs:", err);
-        return [];
-    }
-}
-/* 
-   Função de requisição da API para o TOP 5 de
- */
-async function fetchTopNomes() {
-    try {
-        const response = await fetch(`/api/consultas/top5`, {
-            headers: { Authorization: `Bearer ${token}` }
-        });
-        const dados = await response.json();
-        return dados.success ? dados.dados : [];
-    } catch (err) {
-        console.error("Erro ao buscar top nomes:", err);
-        return [];
-    }
-}
+
 
 /* 
    Função da tabela do histórico
@@ -176,77 +158,12 @@ function resumoConsulta(resumo) {
     document.getElementById("taxa-sucesso").textContent = ((resumo.sucessos / resumo.total) * 100).toFixed(1) + "%";
 }
 
-/* 
-   Geração do gráfico do top 5 de URLS
- */
-function gerarBarGraficoTopAcessos(topUrls) {
-    const labels = topUrls.map(i => i.nome);
-    const valores = topUrls.map(i => i.total);
-
-    if (!graficoTopUrls) {
-        graficoTopUrls = new Chart(document.getElementById("grafico-top-urls"), {
-            type: "bar",
-            data: { labels, datasets: [{ label: "Consultas com Sucesso", data: valores }] },
-            options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false }
-        });
-    } else {
-        graficoTopUrls.data.labels = labels;
-        graficoTopUrls.data.datasets[0].data = valores;
-        graficoTopUrls.update();
-    }
-}
 
 
-/* 
-   Gráfico de acesso por dias
- */
 
-function criarGraficoPorDia(dadosPorDia) {
-    const labels = dadosPorDia.map(item => item.dia);
-    const valores = dadosPorDia.map(item => item.total);
 
-    if (!graficoDia) {
-        graficoDia = new Chart(document.getElementById("grafico-acessos"), {
-            type: "line",
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: "Consultas por Dia",
-                    data: valores,
-                    fill: false,
-                    borderColor: "rgb(75, 192, 192)",
-                    tension: 0.1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false
-            }
-        });
-    } else {
-        graficoDia.data.labels = labels;
-        graficoDia.data.datasets[0].data = valores;
-        graficoDia.update();
-    }
-}
 
-/* 
-   Gráfico de status de consulta
- */
-function criarGraficoStatus(resumo) {
-    const sucessos = resumo.sucessos || 0;
-    const falhas = resumo.falhas || 0;
 
-    if (!graficoStatus) {
-        graficoStatus = new Chart(document.getElementById("grafico-status"), {
-            type: "doughnut",
-            data: { labels: ["Sucesso", "Erro"], datasets: [{ data: [sucessos, falhas] }] }
-        });
-    } else {
-        graficoStatus.data.datasets[0].data = [sucessos, falhas];
-        graficoStatus.update();
-    }
-}
 
 /* 
    Renderização de controles e paginação
@@ -325,20 +242,63 @@ function mudarPagina(novaPagina) {
 }
 
 /* 
+   Carregar e salvar editais
+ */
+async function carregarEditais() {
+    try {
+        const response = await fetch("/api/editais");
+        const dados = await response.json();
+        if (!dados.success) return;
+
+        ["ic", "aeri"].forEach((tipo) => {
+            const edital = dados[tipo] || {};
+            const anoEl = document.getElementById(`edital-${tipo}-ano`);
+            const urlEl = document.getElementById(`edital-${tipo}-url`);
+            if (anoEl) anoEl.value = edital.ano || "";
+            if (urlEl) urlEl.value = edital.url || "";
+        });
+    } catch (err) {
+        console.error("Erro ao carregar editais:", err);
+    }
+}
+
+async function salvarEdital(tipo) {
+    const ano = document.getElementById(`edital-${tipo}-ano`)?.value.trim() || "";
+    const url = document.getElementById(`edital-${tipo}-url`)?.value.trim() || "";
+    const statusEl = document.getElementById(`edital-${tipo}-status`);
+
+    try {
+        const response = await fetch("/api/editais", {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`,
+            },
+            body: JSON.stringify({ tipo, ano, url }),
+        });
+        const dados = await response.json();
+        if (statusEl) {
+            statusEl.textContent = dados.success ? "✅ Salvo!" : `❌ ${dados.message}`;
+            setTimeout(() => { statusEl.textContent = ""; }, 3000);
+        }
+    } catch (err) {
+        if (statusEl) {
+            statusEl.textContent = "❌ Erro de conexão.";
+            setTimeout(() => { statusEl.textContent = ""; }, 3000);
+        }
+    }
+}
+
+/* 
    Função para carregar a todas as componentes da dashboard
  */
 async function carregarDashboard(pagina = 1) {
     
     const dadosConsultas = await fetchConsultas(pagina);
     const resumo = await fetchResumo();
-    const topUrls = await fetchTopUrls();
-    const consultasPorDia = await fetchConsultasPorDia();
 
     if (!dadosConsultas || !resumo) return;
 
     gerarTabelaHistoricoConsultas(dadosConsultas.consultas, dadosConsultas.total_pages);
     resumoConsulta(resumo);
-    criarGraficoPorDia(consultasPorDia);
-    criarGraficoStatus(resumo);
-    gerarBarGraficoTopAcessos(topUrls);
 }

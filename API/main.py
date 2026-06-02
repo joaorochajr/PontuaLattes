@@ -8,7 +8,7 @@ from urllib.parse import urlparse, parse_qs
 
 
 from controller import buscaLattes
-from database import init_database, get_consultas, count_consultas, get_top5_consultas, verify_login,  get_user_id_by_token, delete_session, get_consultas_por_dia
+from database import init_database, get_consultas, count_consultas, get_top5_consultas, verify_login,  get_user_id_by_token, delete_session, get_consultas_por_dia, get_editais, salvar_edital
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -86,6 +86,11 @@ class ICCollectHandler(BaseHTTPRequestHandler):
         path = parsed_url.path
         qs = parse_qs(parsed_url.query)
     
+        if path == "/api/editais":
+            editais = get_editais()
+            self._send_json({"success": True, "ic": editais["ic"], "aeri": editais["aeri"]})
+            return
+
         if path == "/health":
             self._send_json({"status": "ok"})
             return
@@ -100,7 +105,10 @@ class ICCollectHandler(BaseHTTPRequestHandler):
                 )
                 return
 
-            dados = get_top5_consultas()
+            tipo = qs.get("tipo", ["ic"])[0]
+            if tipo not in ("ic", "aeri"):
+                tipo = "ic"
+            dados = get_top5_consultas(tipo)
 
             # Retorna o JSON
             self._send_json({
@@ -144,8 +152,12 @@ class ICCollectHandler(BaseHTTPRequestHandler):
             success = qs.get("success", [None])[0]
             success = int(success) if success is not None else None
 
-            consultas = get_consultas(success, page, per_page)
-            total = count_consultas(success)
+            tipo = qs.get("tipo", ["ic"])[0]
+            if tipo not in ("ic", "aeri"):
+                tipo = "ic"
+
+            consultas = get_consultas(success, page, per_page, tipo)
+            total = count_consultas(success, tipo)
 
             total_pages = (total + per_page - 1) // per_page
 
@@ -240,8 +252,12 @@ class ICCollectHandler(BaseHTTPRequestHandler):
                 self._send_json({"success": False, "message": "Informe a URL completa ou o código.", "code": None}, HTTPStatus.BAD_REQUEST)
                 return
 
+            tipo_lattes = payload.get("tipo", "ic")
+            if tipo_lattes not in ("ic", "aeri"):
+                tipo_lattes = "ic"
+
             try:
-                resultado = buscaLattes(url_lattes)
+                resultado = buscaLattes(url_lattes, tipo_lattes)
                 status = HTTPStatus.OK if resultado.get("success") else HTTPStatus.BAD_GATEWAY
                 self._send_json(resultado, status)
             except Exception as exc:
@@ -255,6 +271,33 @@ class ICCollectHandler(BaseHTTPRequestHandler):
             return
 
         self._send_json({"success": False, "message": "Rota não encontrada."}, HTTPStatus.NOT_FOUND)
+
+    def do_PUT(self):
+        if not self._get_authenticated_user_id():
+            self._send_json({"success": False, "message": "Não autorizado."}, HTTPStatus.UNAUTHORIZED)
+            return
+
+        content_length = int(self.headers.get("Content-Length", "0"))
+        raw_body = self.rfile.read(content_length).decode("utf-8") if content_length else "{}"
+        try:
+            payload = json.loads(raw_body or "{}")
+        except json.JSONDecodeError:
+            self._send_json({"success": False, "message": "Corpo da requisição inválido."}, HTTPStatus.BAD_REQUEST)
+            return
+
+        if self.path == "/api/editais":
+            tipo = str(payload.get("tipo", "")).strip()
+            ano  = str(payload.get("ano", "")).strip()
+            url  = str(payload.get("url", "")).strip()
+            if tipo not in ("ic", "aeri"):
+                self._send_json({"success": False, "message": "tipo deve ser 'ic' ou 'aeri'."}, HTTPStatus.BAD_REQUEST)
+                return
+            salvar_edital(tipo, ano, url)
+            self._send_json({"success": True, "message": "Edital salvo com sucesso."})
+            return
+
+        self._send_json({"success": False, "message": "Rota não encontrada."}, HTTPStatus.NOT_FOUND)
+
 def run():
     init_database()
     host = os.getenv("HOST", HOST)

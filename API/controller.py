@@ -3,7 +3,7 @@ import re
 from datetime import date
 from html import unescape
 
-from database import registrar_barema, registrar_consulta
+from database import registrar_barema, registrar_barema_aeri, registrar_consulta
 from service import getLattesCode, getLattesIndexHtml, getLattesPViewHtml
 
 
@@ -492,8 +492,141 @@ def calcularBarema(resultado=None):
 	}
 
 
+def calcularBaremaAERI(resultado=None):
+	dados_lattes = getConteudo(resultado) if resultado is not None else conteudo_lattes
+
+	if not dados_lattes:
+		return {"success": False, "message": "Nenhum conteúdo do Lattes foi carregado."}
+
+	if not dados_lattes.get("success"):
+		return {
+			"success": False,
+			"message": "Não foi possível calcular o barema AERI sem uma coleta válida.",
+			"detalhe": dados_lattes.get("message"),
+		}
+
+	index_html = dados_lattes.get("index_html") or ""
+	variaveis_js = _extrair_variaveis_js(index_html)
+
+	# ------------------------------------------------------------------
+	# 1. Participações / Organizações em/de Reuniões / Eventos (max 10)
+	# ------------------------------------------------------------------
+	qtd_apresentacoes = _somar_variaveis_por_ano(
+		variaveis_js, "barraAnosProducoesTecnicas",
+		["valoesApresentacoesDeTrabalhos"],
+		ano_minimo=0,
+	)
+
+	participacoes_itens = {
+		"Comunicação oral / Apresentação de pôster": _detalhar_item(qtd_apresentacoes, 1.0),
+	}
+	participacoes_bruto = _normalizar_pontuacao(
+		sum(item["pontos"] for item in participacoes_itens.values())
+	)
+	participacoes_limitado = min(participacoes_bruto, 10.0)
+
+	# ------------------------------------------------------------------
+	# 2. Indicadores de Produção Científica, Tecnológica e Artística (max 10)
+	# ------------------------------------------------------------------
+	qtd_artigos_periodicos = _somar_variaveis_por_ano(
+		variaveis_js, "barraAnosProducoesBibliograficas",
+		["valoresArtigosPublicadosPeriodicos"],
+		ano_minimo=0,
+	)
+	qtd_textos_jornais = _somar_variaveis_por_ano(
+		variaveis_js, "barraAnosProducoesBibliograficas",
+		["valoresArtigosResumidosPublicadosPeriodicos"],
+		ano_minimo=0,
+	)
+	qtd_resumos_anais = _somar_variaveis_por_ano(
+		variaveis_js, "barraAnosProducoesBibliograficas",
+		["valoresTrabalhosResumidosPublicadosEventos"],
+		ano_minimo=0,
+	)
+	qtd_trabalhos_anais = _somar_variaveis_por_ano(
+		variaveis_js, "barraAnosProducoesBibliograficas",
+		["valoresTrabalhosPublicadosEventos"],
+		ano_minimo=0,
+	)
+	qtd_producao_artistica = _somar_series_por_ano(
+		variaveis_js, "barraAnosProducoesCulturais",
+		[("cultur",), ("artist",)],
+		ano_minimo=0,
+	)
+
+	producao_itens = {
+		"Artigo completo em periódico": _detalhar_item(qtd_artigos_periodicos, 5.0),
+		"Texto em jornal/revista": _detalhar_item(qtd_textos_jornais, 1.0),
+		"Resumo publicado em anais": _detalhar_item(qtd_resumos_anais, 0.5),
+		"Trabalho completo em anais": _detalhar_item(qtd_trabalhos_anais, 5.0),
+		"Exposição / Apresentação artística": _detalhar_item(qtd_producao_artistica, 5.0),
+	}
+	producao_bruto = _normalizar_pontuacao(
+		sum(item["pontos"] for item in producao_itens.values())
+	)
+	producao_limitada = min(producao_bruto, 10.0)
+
+	# ------------------------------------------------------------------
+	# 3. Representação / Liderança Estudantil (max 10) — não extraível
+	# ------------------------------------------------------------------
+	representacao_itens = {}
+	representacao_bruto = 0.0
+	representacao_limitada = 0.0
+
+	# ------------------------------------------------------------------
+	# 4. Participação em Programa Acadêmico / Estágios (max 10) — não extraível
+	# ------------------------------------------------------------------
+	programas_itens = {}
+	programas_bruto = 0.0
+	programas_limitada = 0.0
+
+	# ------------------------------------------------------------------
+	# Totais
+	# ------------------------------------------------------------------
+	total_bruto = _normalizar_pontuacao(
+		participacoes_bruto + producao_bruto + representacao_bruto + programas_bruto
+	)
+	total_limitado = _normalizar_pontuacao(
+		participacoes_limitado + producao_limitada + representacao_limitada + programas_limitada
+	)
+
+	observacoes = [
+		"Seção 'Representação/Liderança Estudantil' não pode ser extraída automaticamente do Lattes — preencha manualmente.",
+		"Seção 'Participação em Programa Acadêmico/Estágios' não pode ser extraída automaticamente do Lattes — preencha manualmente.",
+		"Itens como premiações, cursos de idioma, participação em eventos da AERI e outros não são identificados automaticamente.",
+	]
+
+	return {
+		"success": True,
+		"message": "Barema AERI calculado com sucesso.",
+		"participacoes_eventos": {
+			"itens": participacoes_itens,
+			"subtotal_bruto": participacoes_bruto,
+			"subtotal_limitado": participacoes_limitado,
+		},
+		"producao_cientifica": {
+			"itens": producao_itens,
+			"subtotal_bruto": producao_bruto,
+			"subtotal_limitado": producao_limitada,
+		},
+		"representacao_lideranca": {
+			"itens": representacao_itens,
+			"subtotal_bruto": representacao_bruto,
+			"subtotal_limitado": representacao_limitada,
+		},
+		"participacao_programas": {
+			"itens": programas_itens,
+			"subtotal_bruto": programas_bruto,
+			"subtotal_limitado": programas_limitada,
+		},
+		"total_bruto": total_bruto,
+		"total_limitado": total_limitado,
+		"observacoes": observacoes,
+	}
+
+
 # Busca os dados no service
-def buscaLattes(url):
+def buscaLattes(url, tipo="ic"):
 	code = getLattesCode(url)
 
 	if not code or _is_request_error(code):
@@ -508,7 +641,8 @@ def buscaLattes(url):
 		}
 		conteudo = getConteudo(resultado)
 		conteudo["barema"] = calcularBarema()
-		registrar_consulta(url, conteudo)
+		conteudo["barema_aeri"] = calcularBaremaAERI()
+		registrar_consulta(url, conteudo, tipo)
 		return conteudo
 
 	preview_html = getLattesPViewHtml(code)
@@ -527,6 +661,8 @@ def buscaLattes(url):
 
 	conteudo = getConteudo(resultado)
 	conteudo["barema"] = calcularBarema()
-	consulta_id = registrar_consulta(url, conteudo)
+	conteudo["barema_aeri"] = calcularBaremaAERI()
+	consulta_id = registrar_consulta(url, conteudo, tipo)
 	registrar_barema(consulta_id, conteudo.get("code"), conteudo.get("nome"), conteudo.get("barema"))
+	registrar_barema_aeri(consulta_id, conteudo.get("code"), conteudo.get("nome"), conteudo.get("barema_aeri"))
 	return conteudo

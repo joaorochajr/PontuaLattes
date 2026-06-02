@@ -54,25 +54,47 @@
             </div>
         </section>
 
-        <section class="panel info-panel">
-            <h2>Acessos por Dia</h2>
-            <canvas id="grafico-acessos"></canvas>
+
+
+
+
+        <!-- CONFIGURAÇÃO DOS EDITAIS -->
+        <section class="panel form-panel">
+            <h2>Configuração dos Editais</h2>
+            <p class="helper-text">Informe o ano e o link do edital para cada modalidade. O link será exibido na página inicial.</p>
+
+            <div class="editais-config">
+
+                <div class="edital-config-card panel">
+                    <h3>Edital IC</h3>
+                    <label for="edital-ic-ano">Ano</label>
+                    <input id="edital-ic-ano" type="text" placeholder="Ex: 2026" maxlength="4">
+                    <label for="edital-ic-url">URL do Edital</label>
+                    <input id="edital-ic-url" type="url" placeholder="https://...">
+                    <button class="btn-salvar-edital" data-tipo="ic">Salvar Edital IC</button>
+                    <span class="edital-status" id="edital-ic-status"></span>
+                </div>
+
+                <div class="edital-config-card panel">
+                    <h3>Edital AERI</h3>
+                    <label for="edital-aeri-ano">Ano</label>
+                    <input id="edital-aeri-ano" type="text" placeholder="Ex: 2026" maxlength="4">
+                    <label for="edital-aeri-url">URL do Edital</label>
+                    <input id="edital-aeri-url" type="url" placeholder="https://...">
+                    <button class="btn-salvar-edital" data-tipo="aeri">Salvar Edital AERI</button>
+                    <span class="edital-status" id="edital-aeri-status"></span>
+                </div>
+
+            </div>
         </section>
-
-        <section class="panel info-panel">
-            <h2>Status das Consultas</h2>
-            <canvas id="grafico-status"></canvas>
-        </section>
-
-        <section class="panel info-panel">
-            <h2>Ranking de Nomes Pesquisados</h2>
-            <canvas id="grafico-top-urls"></canvas>
-        </section>
-
-
 
         <section class="panel html-card">
-            <h2>Histórico de Consultas</h2>
+            <div class="tab-bar">
+                <button class="tab-btn active" data-tab="ic">EDITAL IC</button>
+                <button class="tab-btn" data-tab="aeri">EDITAL AERI</button>
+            </div>
+
+            <h2 id="historico-title">Histórico de Consultas — Edital IC</h2>
 
             <div class="barema-table-wrapper">
                 <table class="barema-table">
