@@ -557,3 +557,55 @@ def get_user_id_by_token(token):
 	if not rows:
 		return None
 	return _as_int(rows[0]["user_id"], rows[0]["user_id"])
+
+
+# ---------------------------------------------------------------------------
+# Dump completo (para backup / sync externo)
+# ---------------------------------------------------------------------------
+
+def dump_barema():
+	"""Retorna todos os registros da tabela barema (sem paginação)."""
+	init_database()
+	result = _q(
+		"SELECT id, consulta_id, code, nome, "
+		"titulacao_bruto, titulacao_limitado, "
+		"producao_bruto, producao_limitado, "
+		"formacao_bruto, formacao_limitado, "
+		"eventos_bruto, eventos_limitado, "
+		"total_bruto, total_limitado, updated_at "
+		"FROM barema ORDER BY id ASC"
+	)
+	return _rows(result)
+
+
+def dump_barema_aeri():
+	"""Retorna todos os registros da tabela barema_aeri (sem paginação)."""
+	init_database()
+	result = _q(
+		"SELECT id, consulta_id, code, nome, "
+		"participacoes_bruto, participacoes_limitado, "
+		"producao_bruto, producao_limitado, "
+		"representacao_bruto, representacao_limitado, "
+		"programas_bruto, programas_limitado, "
+		"total_bruto, total_limitado, updated_at "
+		"FROM barema_aeri ORDER BY id ASC"
+	)
+	return _rows(result)
+
+
+def dump_consultas():
+	"""Retorna todos os registros da tabela consultas (sem paginação)."""
+	init_database()
+	result = _q(
+		"SELECT id, url_informada, url_consultada, code, "
+		"success, message, created_at, tipo "
+		"FROM consultas ORDER BY id ASC"
+	)
+	return _rows(result)
+
+
+def dump_editais():
+	"""Retorna todos os editais cadastrados."""
+	init_database()
+	result = _q("SELECT tipo, ano, url, updated_at FROM editais")
+	return _rows(result)
