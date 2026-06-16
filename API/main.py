@@ -8,7 +8,12 @@ from urllib.parse import urlparse, parse_qs
 
 
 from controller import buscaLattes
-from database import init_database, get_consultas, count_consultas, get_top5_consultas, verify_login,  get_user_id_by_token, delete_session, get_consultas_por_dia, get_editais, salvar_edital
+from database import (
+    init_database, get_consultas, count_consultas, get_top5_consultas,
+    verify_login, get_user_id_by_token, delete_session, get_consultas_por_dia,
+    get_editais, salvar_edital,
+    dump_barema, dump_barema_aeri, dump_consultas, dump_editais,
+)
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -16,6 +21,30 @@ SPA_DIR = BASE_DIR.parent / "SPA"
 INDEX_FILE = SPA_DIR / "index.html"
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8000"))
+
+
+def _sheets_configured():
+    return bool(
+        os.getenv("GOOGLE_SHEETS_SPREADSHEET_ID", "").strip()
+        and os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
+    )
+
+
+def _try_sync_sheets():
+    """Sincroniza todo o banco Turso com a planilha Google Sheets.
+    Erros são suprimidos para não afetar a resposta da API."""
+    if not _sheets_configured():
+        return
+    try:
+        from google_sheets_store import sync_all
+        sync_all(
+            dump_barema(),
+            dump_barema_aeri(),
+            dump_consultas(),
+            dump_editais(),
+        )
+    except Exception as exc:
+        print(f"[sheets] Falha na sincronização: {exc}", flush=True)
 
 
 class ICCollectHandler(BaseHTTPRequestHandler):
@@ -260,12 +289,37 @@ class ICCollectHandler(BaseHTTPRequestHandler):
                 resultado = buscaLattes(url_lattes, tipo_lattes)
                 status = HTTPStatus.OK if resultado.get("success") else HTTPStatus.BAD_GATEWAY
                 self._send_json(resultado, status)
+                if resultado.get("success"):
+                    _try_sync_sheets()
             except Exception as exc:
                 self._send_json(
                     {
                         "success": False,
                         "message": f"Erro interno ao processar a consulta: {exc}",
                     },
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+            return
+
+        elif self.path == "/api/sync-sheets":
+            if not self._get_authenticated_user_id():
+                self._send_json(
+                    {"success": False, "message": "Não autorizado."},
+                    HTTPStatus.UNAUTHORIZED,
+                )
+                return
+            if not _sheets_configured():
+                self._send_json(
+                    {"success": False, "message": "Variáveis do Google Sheets não configuradas."},
+                    HTTPStatus.BAD_REQUEST,
+                )
+                return
+            try:
+                _try_sync_sheets()
+                self._send_json({"success": True, "message": "Planilha sincronizada com sucesso."})
+            except Exception as exc:
+                self._send_json(
+                    {"success": False, "message": f"Erro na sincronização: {exc}"},
                     HTTPStatus.INTERNAL_SERVER_ERROR,
                 )
             return
