@@ -16,7 +16,8 @@ Sistema que analisa o currículo Lattes e calcula automaticamente o barema para 
 3. [Estrutura do projeto](#estrutura-do-projeto)
 4. [Como executar localmente](#como-executar-localmente)
 5. [Banco de dados — Turso](#banco-de-dados--turso)
-6. [Deploy no Vercel](#deploy-no-vercel)
+6. [Backup no Google Sheets](#backup-no-google-sheets)
+7. [Deploy no Vercel](#deploy-no-vercel)
 
 ---
 
@@ -37,6 +38,8 @@ O backend é um único servidor Python (`BaseHTTPRequestHandler`) que serve a SP
 - Histórico de consultas com paginação
 - Dashboard administrativo para configurar URLs dos editais
 - Interface web em SPA (HTML/CSS/JS puro, sem framework)
+- **Backup automático no Google Sheets** a cada consulta bem-sucedida
+- Endpoint `POST /api/sync-sheets` para sincronização manual sob demanda
 
 ---
 
@@ -45,24 +48,26 @@ O backend é um único servidor Python (`BaseHTTPRequestHandler`) que serve a SP
 ```
 PontuaLattes/
 ├── API/
-│   ├── main.py           # servidor HTTP, roteamento e endpoints
-│   ├── controller.py     # lógica de scraping, cálculo do barema IC e AERI
-│   ├── service.py        # coleta dos dados públicos do Lattes
-│   ├── database.py       # fachada do banco (reexporta funções do turso_store)
-│   ├── turso_store.py    # camada de persistência — Turso/libSQL
-│   └── requirements.txt  # dependências Python
+│   ├── main.py                # servidor HTTP, roteamento e endpoints
+│   ├── controller.py          # lógica de scraping, cálculo do barema IC e AERI
+│   ├── service.py             # coleta dos dados públicos do Lattes
+│   ├── database.py            # fachada do banco (reexporta funções do turso_store)
+│   ├── turso_store.py         # camada de persistência — Turso/libSQL
+│   ├── google_sheets_store.py # camada de backup — Google Sheets
+│   ├── sync_to_sheets.py      # script CLI para sincronização manual
+│   └── requirements.txt       # dependências Python
 ├── SPA/
-│   ├── index.html        # página principal — consulta do barema
-│   ├── app.js            # lógica da consulta e renderização do barema
-│   ├── auth.js           # autenticação e sessão
-│   ├── login.html        # formulário de login
-│   ├── dashboard.html    # dashboard administrativo
-│   ├── dashboard.js      # lógica do dashboard
-│   └── styles.css        # estilos da interface
+│   ├── index.html             # página principal — consulta do barema
+│   ├── app.js                 # lógica da consulta e renderização do barema
+│   ├── auth.js                # autenticação e sessão
+│   ├── login.html             # formulário de login
+│   ├── dashboard.html         # dashboard administrativo
+│   ├── dashboard.js           # lógica do dashboard
+│   └── styles.css             # estilos da interface
 ├── api/
-│   ├── index.py          # entrypoint Vercel (importa ICCollectHandler)
-│   └── requirements.txt  # dependências instaladas pelo Vercel
-├── vercel.json           # configuração do deploy serverless
+│   ├── index.py               # entrypoint Vercel (importa ICCollectHandler)
+│   └── requirements.txt       # dependências instaladas pelo Vercel
+├── vercel.json                # configuração do deploy serverless
 └── README.md
 ```
 
@@ -106,6 +111,10 @@ DEFAULT_DASHBOARD_USERNAME=admin
 DEFAULT_DASHBOARD_PASSWORD=sua_senha_aqui
 HOST=0.0.0.0
 PORT=8000
+
+# Backup Google Sheets (opcional — veja seção específica)
+GOOGLE_SHEETS_SPREADSHEET_ID=
+GOOGLE_SERVICE_ACCOUNT_JSON=
 ```
 
 ### 5. Inicie o servidor
@@ -170,7 +179,70 @@ As tabelas são criadas automaticamente na primeira execução (`turso_store.py`
 
 ---
 
-## Deploy no Vercel
+## Backup no Google Sheets
+
+O sistema pode espelhar automaticamente todos os dados do Turso em uma planilha Google Sheets. A sincronização ocorre após cada consulta bem-sucedida ao Lattes e também pode ser disparada manualmente.
+
+As seguintes abas são criadas/atualizadas na planilha:
+
+| Aba | Conteúdo |
+|---|---|
+| `barema` | Pontuações do barema IC |
+| `barema_aeri` | Pontuações do barema AERI |
+| `consultas` | Histórico completo de consultas |
+| `editais` | Editais cadastrados |
+
+### 1. Crie um projeto no Google Cloud
+
+Acesse https://console.cloud.google.com, crie um projeto e ative a **Google Sheets API** e a **Google Drive API**.
+
+### 2. Crie uma Service Account
+
+1. No menu lateral, vá em **IAM e administrador → Contas de serviço**
+2. Clique em **Criar conta de serviço**, dê um nome e confirme
+3. Na conta criada, vá na aba **Chaves → Adicionar chave → Criar nova chave → JSON**
+4. Salve o arquivo `.json` gerado
+
+### 3. Compartilhe a planilha com a Service Account
+
+Abra a planilha no Google Sheets, clique em **Compartilhar** e adicione o e-mail da Service Account (termina em `@...gserviceaccount.com`) com permissão de **Editor**.
+
+### 4. Configure as variáveis de ambiente
+
+```env
+# ID da planilha — parte final da URL:
+# https://docs.google.com/spreadsheets/d/<ID>/edit
+GOOGLE_SHEETS_SPREADSHEET_ID=seu_id_aqui
+
+# Conteúdo completo do arquivo JSON da Service Account (em uma única linha)
+GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account",...}
+```
+
+> **Dica:** para evitar problemas com quebras de linha na variável de ambiente, você pode codificar o JSON em base64:
+> ```bash
+> base64 -w 0 service_account.json
+> ```
+> e colar o resultado em `GOOGLE_SERVICE_ACCOUNT_JSON`.
+
+### 5. Sincronização manual via script
+
+Para sincronizar sob demanda a partir da linha de comando:
+
+```bash
+cd API
+env $(cat ../.env | grep -v '^#' | xargs) python3 sync_to_sheets.py
+```
+
+### 6. Sincronização manual via endpoint
+
+Com o servidor rodando, faça um `POST /api/sync-sheets` autenticado:
+
+```bash
+curl -X POST https://seu-app.vercel.app/api/sync-sheets \
+  -H "Authorization: Bearer SEU_TOKEN"
+```
+
+> Se as variáveis `GOOGLE_SHEETS_SPREADSHEET_ID` e `GOOGLE_SERVICE_ACCOUNT_JSON` não estiverem definidas, o backup é simplesmente ignorado — o sistema continua funcionando normalmente.
 
 ### Pré-requisitos
 
@@ -205,6 +277,8 @@ Ainda na tela de configuração, clique em **Environment Variables** e adicione:
 | `TURSO_AUTH_TOKEN` | Token de autenticação do Turso |
 | `DEFAULT_DASHBOARD_USERNAME` | Nome de usuário do dashboard (ex: `admin`) |
 | `DEFAULT_DASHBOARD_PASSWORD` | Senha do dashboard |
+| `GOOGLE_SHEETS_SPREADSHEET_ID` | *(opcional)* ID da planilha para backup |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | *(opcional)* JSON da Service Account (string ou base64) |
 
 > **Atenção:** nunca comite o arquivo `.env` no repositório.
 
@@ -251,6 +325,8 @@ git commit --allow-empty -m "chore: redeploy" && git push origin main
 | `TURSO_AUTH_TOKEN` | Sim | Token JWT de autenticação do Turso |
 | `DEFAULT_DASHBOARD_USERNAME` | Sim | Usuário administrador criado na primeira inicialização |
 | `DEFAULT_DASHBOARD_PASSWORD` | Sim | Senha do usuário administrador |
+| `GOOGLE_SHEETS_SPREADSHEET_ID` | Não | ID da planilha Google Sheets para backup |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | Não | JSON da Service Account (string direta ou base64) |
 | `HOST` | Não | Endereço de bind local (padrão: `0.0.0.0`) |
 | `PORT` | Não | Porta local (padrão: `8000`) |
 
