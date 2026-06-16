@@ -4,7 +4,8 @@ Projeto de extensão desenvolvido na disciplina EXA618: Programação para Redes
 
 Sistema que analisa o currículo Lattes e calcula automaticamente o barema para avaliação de candidatos a bolsas de **Iniciação Científica (IC)** e **Assessoria Especial de Relações Institucionais (AERI)** da UEFS.
 
-- Repositório: https://github.com/argalvao/PontuaLattes
+- Repositório: [github.com/argalvao/PontuaLattes](https://github.com/argalvao/PontuaLattes)
+- Planilha de backup: [Google Sheets](https://docs.google.com/spreadsheets/d/1f78in2E1nG3cuPPQq884jU1-7XRQxHvgEHYLU5SRNUo/edit?gid=149912474#gid=149912474)
 - Desenvolvedores: Abel Galvão, Alex Júnior e Bruno Campos
 
 ---
