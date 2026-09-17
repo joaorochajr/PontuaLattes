@@ -12,11 +12,13 @@ from turso_store import get_consultas
 from turso_store import get_consultas_por_dia
 from turso_store import get_editais
 from turso_store import get_top5_consultas
+from turso_store import obter_barema
 from turso_store import get_user_id_by_token
 from turso_store import hash_password
 from turso_store import init_database
 from turso_store import normalizar_tipo
 from turso_store import normalizar_tipo_edital
+from turso_store import atualizar_barema_ajustado
 from turso_store import registrar_barema
 from turso_store import registrar_barema_aeri
 from turso_store import registrar_barema_extensao_discente
@@ -43,11 +45,13 @@ __all__ = [
 	"get_consultas_por_dia",
 	"get_editais",
 	"get_top5_consultas",
+	"obter_barema",
 	"get_user_id_by_token",
 	"hash_password",
 	"init_database",
 	"normalizar_tipo",
 	"normalizar_tipo_edital",
+	"atualizar_barema_ajustado",
 	"registrar_barema",
 	"registrar_barema_aeri",
 	"registrar_barema_extensao_discente",

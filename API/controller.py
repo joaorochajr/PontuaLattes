@@ -200,7 +200,6 @@ def extract_publications(index_html):
 def _e_variavel_de_anos(nome_variavel):
 	# As series de rotulos ("barraAnos...") nao sao producoes; se entrarem na
 	# busca por padroes, os proprios anos acabam somados como pontuacao.
-	# Usada apenas pelo barema PIBEX: IC e AERI seguem o comportamento original.
 	return nome_variavel.lower().startswith("barraanos")
 
 
@@ -219,6 +218,8 @@ def _somar_series_por_ano(variaveis_js, nome_anos, padroes, ano_minimo=None):
 
 	variaveis_encontradas = set()
 	for nome_variavel in variaveis_js:
+		if _e_variavel_de_anos(nome_variavel):
+			continue
 		nome_variavel_lower = nome_variavel.lower()
 		if any(all(token in nome_variavel_lower for token in padrao) for padrao in padroes):
 			variaveis_encontradas.add(nome_variavel)
@@ -396,7 +397,7 @@ def calcularBarema(resultado=None):
 	quantidade_producao_artistica = _somar_series_por_ano(
 		variaveis_js,
 		"barraAnosProducoesCulturais",
-		[("cultur",), ("artist",)],
+		[("artes",), ("music",), ("cultur",), ("artist",)],
 	)
 	quantidade_trabalho_tecnico = _somar_variaveis_por_ano(
 		variaveis_js,
@@ -1009,6 +1010,84 @@ def sugerir_preenchimento_extensao(dados_pdf):
 		"extensao_discente": {"participacao_eventos": eventos_discente},
 		"avisos": avisos,
 	}
+
+
+# ---------------------------------------------------------------------------
+# Recalculo com as quantidades informadas pelo avaliador
+#
+# O que o navegador manda sao QUANTIDADES, nunca pontos: os pesos e os tetos
+# sao aplicados aqui, no servidor, a partir das mesmas constantes usadas no
+# calculo original. Assim o historico nao pode receber um total forjado.
+# ---------------------------------------------------------------------------
+
+_SECOES_EDITAVEIS = {
+	"extensao_docente": {
+		"atuacao_extensao": (_EXTENSAO_ATUACAO_DOCENTE, 8),
+	},
+	"extensao_discente": {
+		"atuacao_extensao": (_EXTENSAO_ATUACAO_DISCENTE, 6),
+		"participacao_eventos": (_EXTENSAO_EVENTOS_DISCENTE, 9),
+	},
+}
+
+_SECOES_POR_TIPO = {
+	"extensao_docente": (
+		"titulacao", "atuacao_extensao", "producao", "formacao_recursos_humanos",
+	),
+	"extensao_discente": (
+		"atuacao_extensao", "producao", "participacao_eventos",
+	),
+}
+
+
+def _montar_secao_por_rotulo(itens_config, quantidades_por_rotulo, teto):
+	itens = {}
+	for rotulo, _chave, peso, teto_item in itens_config:
+		try:
+			quantidade = int(float(quantidades_por_rotulo.get(rotulo, 0) or 0))
+		except (TypeError, ValueError):
+			quantidade = 0
+		itens[rotulo] = _detalhar_item(max(0, quantidade), peso, teto_item)
+
+	bruto = _normalizar_pontuacao(sum(item["pontos"] for item in itens.values()))
+
+	return {
+		"itens": itens,
+		"subtotal_bruto": bruto,
+		"subtotal_limitado": _normalizar_pontuacao(min(bruto, teto)),
+		"teto": teto,
+		"editavel": True,
+	}
+
+
+def aplicar_quantidades_manuais(barema, tipo, quantidades):
+	"""Refaz as secoes editaveis do barema com as quantidades informadas e
+	recalcula os totais. Devolve None se o tipo nao tiver secoes editaveis ou
+	se o barema recebido nao for valido."""
+	editaveis = _SECOES_EDITAVEIS.get(tipo)
+	secoes = _SECOES_POR_TIPO.get(tipo)
+
+	if not editaveis or not secoes or not barema or not barema.get("success"):
+		return None
+
+	atualizado = dict(barema)
+	quantidades = quantidades or {}
+
+	for chave, (config, teto) in editaveis.items():
+		informado = quantidades.get(chave) or {}
+		if not isinstance(informado, dict):
+			informado = {}
+		atualizado[chave] = _montar_secao_por_rotulo(config, informado, teto)
+
+	atualizado["total_bruto"] = _normalizar_pontuacao(
+		sum((atualizado.get(chave) or {}).get("subtotal_bruto", 0) for chave in secoes)
+	)
+	atualizado["total_limitado"] = _normalizar_pontuacao(
+		sum((atualizado.get(chave) or {}).get("subtotal_limitado", 0) for chave in secoes)
+	)
+	atualizado["ajuste_manual"] = True
+
+	return atualizado
 
 
 def _preparar_dados_extensao(resultado, rotulo):

@@ -91,6 +91,7 @@ function resetResults() {
 	sugestoesPdf = null;
 	mostrarPainelPdf(false);
 	setPdfStatus('', '');
+	setSalvarStatus('', '');
 	renderAvisosPdf([]);
 	resultsSection.classList.remove('visible');
 	summaryList.innerHTML = '';
@@ -470,6 +471,67 @@ function renderBaremaAERI(barema) {
 		: '';
 }
 
+const salvarPanel = document.getElementById('salvar-panel');
+const salvarBotao = document.getElementById('salvar-barema');
+const salvarStatus = document.getElementById('salvar-status');
+
+function setSalvarStatus(tipo, mensagem) {
+	if (!salvarStatus) return;
+	salvarStatus.className = `salvar-status ${tipo}`;
+	salvarStatus.textContent = mensagem;
+}
+
+// Lê as quantidades digitadas, agrupadas por seção. Só quantidades são
+// enviadas — os pesos e tetos são aplicados no servidor.
+function coletarQuantidadesManuais() {
+	const porSecao = {};
+	baremaSections.querySelectorAll('.qtd-editavel').forEach((campo) => {
+		const secao = campo.dataset.secao;
+		const rotulo = campo.dataset.rotulo;
+		if (!secao || !rotulo) return;
+		if (!porSecao[secao]) porSecao[secao] = {};
+		porSecao[secao][rotulo] = Math.max(0, Math.floor(Number(campo.value) || 0));
+	});
+	return porSecao;
+}
+
+async function salvarNoHistorico() {
+	if (!lastResultado || !salvarBotao) return;
+
+	const tipo = getTipoConsulta();
+	if (!tipo.startsWith('extensao_')) return;
+
+	salvarBotao.disabled = true;
+	setSalvarStatus('', 'Gravando...');
+
+	try {
+		const resposta = await fetch('/api/barema-manual', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				code: lastResultado.code,
+				tipo,
+				quantidades: coletarQuantidadesManuais(),
+			}),
+		});
+
+		const dados = await resposta.json();
+		if (!resposta.ok || !dados.success) {
+			throw new Error(dados.message || 'Não foi possível gravar.');
+		}
+
+		setSalvarStatus('sucesso', `Histórico atualizado: ${formatNumber(dados.total_limitado)} pontos.`);
+	} catch (erro) {
+		setSalvarStatus('erro', erro.message || 'Falha ao gravar no histórico.');
+	} finally {
+		salvarBotao.disabled = false;
+	}
+}
+
+if (salvarBotao) {
+	salvarBotao.addEventListener('click', salvarNoHistorico);
+}
+
 const pdfPanel = document.getElementById('pdf-panel');
 const pdfInput = document.getElementById('pdf-input');
 const pdfStatus = document.getElementById('pdf-status');
@@ -485,6 +547,7 @@ function setPdfStatus(tipo, mensagem) {
 
 function mostrarPainelPdf(visivel) {
 	if (pdfPanel) pdfPanel.hidden = !visivel;
+	if (salvarPanel) salvarPanel.hidden = !visivel;
 }
 
 function lerArquivoComoBase64(arquivo) {
@@ -651,6 +714,9 @@ function recalcularBaremaEditavel() {
 
 	total = Math.round(total * 100) / 100;
 	statBaremaTotal.textContent = formatNumber(total);
+	if (salvarStatus && salvarStatus.classList.contains('sucesso')) {
+		setSalvarStatus('', 'Valores alterados — grave novamente para atualizar o histórico.');
+	}
 	const totalFinal = baremaSummary.querySelector('.barema-highlight-total strong');
 	if (totalFinal) totalFinal.textContent = formatNumber(total);
 }

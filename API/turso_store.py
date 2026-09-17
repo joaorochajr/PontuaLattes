@@ -299,6 +299,14 @@ def _migrate():
 	except Exception:
 		pass  # coluna já existe
 
+	# Marca quem teve a nota ajustada manualmente (PDF do currículo ou digitação),
+	# para o histórico distinguir nota automática de nota informada.
+	for tabela in ("barema_extensao_docente", "barema_extensao_discente"):
+		try:
+			_q(f"ALTER TABLE {tabela} ADD COLUMN ajuste_manual INTEGER NOT NULL DEFAULT 0")
+		except Exception:
+			pass  # coluna já existe
+
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -387,11 +395,17 @@ def get_consultas(success=None, page=1, per_page=10, tipo="ic"):
 	tipo = normalizar_tipo(tipo)
 	offset = max(page - 1, 0) * per_page
 	barema_table = _tabela_barema(tipo)
+	# Só as tabelas de extensão têm a marca de ajuste manual; IC e AERI
+	# seguem intocadas e devolvem zero fixo.
+	coluna_ajuste = (
+		"b.ajuste_manual" if tipo in ("extensao_docente", "extensao_discente")
+		else "0 AS ajuste_manual"
+	)
 
 	if success is not None:
 		sql = f"""
 			SELECT c.id, c.url_informada, c.url_consultada, c.code, c.success, c.message, c.created_at,
-			       b.nome, b.total_limitado
+			       b.nome, b.total_limitado, {coluna_ajuste}
 			FROM consultas c
 			LEFT JOIN {barema_table} b ON b.code = c.code AND c.code != ''
 			WHERE c.success = ? AND c.tipo = ?
@@ -402,7 +416,7 @@ def get_consultas(success=None, page=1, per_page=10, tipo="ic"):
 	else:
 		sql = f"""
 			SELECT c.id, c.url_informada, c.url_consultada, c.code, c.success, c.message, c.created_at,
-			       b.nome, b.total_limitado
+			       b.nome, b.total_limitado, {coluna_ajuste}
 			FROM consultas c
 			LEFT JOIN {barema_table} b ON b.code = c.code AND c.code != ''
 			WHERE c.tipo = ?
@@ -422,6 +436,7 @@ def get_consultas(success=None, page=1, per_page=10, tipo="ic"):
 			"created_at": row["created_at"] or None,
 			"nome": row["nome"] or None,
 			"total_limitado": _as_float(row["total_limitado"], None),
+			"ajuste_manual": _as_int(row.get("ajuste_manual"), 0),
 		}
 		for row in _rows(result)
 	]
@@ -692,6 +707,81 @@ def registrar_barema_extensao_discente(consulta_id, code, nome, barema_resultado
 			now,
 		),
 	)
+
+
+def obter_barema(tipo, code):
+	"""Devolve o barema já gravado para um currículo, ou None."""
+	init_database()
+	tipo = normalizar_tipo(tipo)
+	code = str(code or "").strip()
+	if not code:
+		return None
+
+	result = _q(
+		f"SELECT barema_json, nome FROM {_tabela_barema(tipo)} WHERE code = ?",
+		(code,),
+	)
+	rows = _rows(result)
+	if not rows or not rows[0]["barema_json"]:
+		return None
+
+	try:
+		return {"barema": json.loads(rows[0]["barema_json"]), "nome": rows[0]["nome"]}
+	except (TypeError, ValueError):
+		return None
+
+
+# Colunas de subtotal de cada modalidade de extensão, na ordem das seções.
+_COLUNAS_AJUSTE = {
+	"extensao_docente": (
+		("titulacao", "titulacao"),
+		("atuacao_extensao", "atuacao"),
+		("producao", "producao"),
+		("formacao_recursos_humanos", "formacao"),
+	),
+	"extensao_discente": (
+		("atuacao_extensao", "atuacao"),
+		("producao", "producao"),
+		("participacao_eventos", "eventos"),
+	),
+}
+
+
+def atualizar_barema_ajustado(tipo, code, barema):
+	"""Regrava a pontuação de um currículo já consultado, marcando-a como
+	ajustada manualmente. Não cria registro novo: se o currículo não foi
+	consultado nessa modalidade, devolve False."""
+	init_database()
+	tipo = normalizar_tipo(tipo)
+	colunas = _COLUNAS_AJUSTE.get(tipo)
+	code = str(code or "").strip()
+
+	if not colunas or not code or not barema or not barema.get("success"):
+		return False
+
+	campos = []
+	valores = []
+	for chave_secao, prefixo in colunas:
+		secao = barema.get(chave_secao) or {}
+		campos.append(f"{prefixo}_bruto = ?")
+		valores.append(secao.get("subtotal_bruto", 0))
+		campos.append(f"{prefixo}_limitado = ?")
+		valores.append(secao.get("subtotal_limitado", 0))
+
+	campos += ["total_bruto = ?", "total_limitado = ?", "barema_json = ?",
+	           "ajuste_manual = 1", "updated_at = ?"]
+	valores += [
+		barema.get("total_bruto", 0),
+		barema.get("total_limitado", 0),
+		json.dumps(barema, ensure_ascii=False),
+		_now_str(),
+	]
+
+	result = _q(
+		f"UPDATE {_tabela_barema(tipo)} SET {', '.join(campos)} WHERE code = ?",
+		(*valores, code),
+	)
+	return bool(getattr(result, "rows_affected", 1))
 
 
 def hash_password(password, salt=None):

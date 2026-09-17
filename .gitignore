@@ -22,3 +22,6 @@ _conferencia.html
 _cv_completo_*.html
 _diagnostico_lattes.txt
 _to_delete/
+
+# Pasta criada pelo app ao entregar arquivos
+Claude outputs/

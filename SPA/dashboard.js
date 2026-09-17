@@ -144,7 +144,9 @@ function gerarTabelaHistoricoConsultas(consultas, totalPaginas) {
         <tr>
             <td>${escapeHtml(c.id)}</td>
             <td>${escapeHtml(c.nome || "-")}</td>
-            <td>${escapeHtml(c.total_limitado || "-")}</td>
+            <td>${escapeHtml(c.total_limitado ?? "-")}${c.ajuste_manual
+                ? ' <span class="marca-ajuste" title="Pontuação ajustada manualmente (PDF do currículo ou preenchimento na tela)">ajustada</span>'
+                : ""}</td>
             <td>${renderizarLink(formatarLattesUrl(c))}</td>
             <td>${formatarIndicadoresUrl(c.code) === "-"
                 ? "-"

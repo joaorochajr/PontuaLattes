@@ -8,12 +8,15 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
 
-from controller import buscaLattes, sugerir_preenchimento_extensao
+from controller import (
+    buscaLattes, sugerir_preenchimento_extensao, aplicar_quantidades_manuais,
+)
 from database import (
     init_database, get_consultas, count_consultas, get_top5_consultas,
     verify_login, get_user_id_by_token, delete_session, get_consultas_por_dia,
     get_editais, salvar_edital, normalizar_tipo, normalizar_tipo_edital,
     usando_banco_local, CAMINHO_BANCO_LOCAL,
+    obter_barema, atualizar_barema_ajustado,
     dump_barema, dump_barema_aeri, dump_consultas, dump_editais,
     dump_barema_extensao_docente, dump_barema_extensao_discente,
 )
@@ -375,6 +378,80 @@ class ICCollectHandler(BaseHTTPRequestHandler):
                 "projetos_extensao": dados_pdf.get("projetos_extensao") or [],
                 "sugestoes": sugerir_preenchimento_extensao(dados_pdf),
             })
+            return
+
+        elif self.path == "/api/barema-manual":
+            tipo = normalizar_tipo(payload.get("tipo"))
+            code = str(payload.get("code") or "").strip()
+            quantidades = payload.get("quantidades")
+
+            if tipo not in ("extensao_docente", "extensao_discente"):
+                self._send_json(
+                    {"success": False, "message": "Ajuste manual disponível apenas no barema PIBEX."},
+                    HTTPStatus.BAD_REQUEST,
+                )
+                return
+
+            if not code:
+                self._send_json(
+                    {"success": False, "message": "Consulta não identificada."},
+                    HTTPStatus.BAD_REQUEST,
+                )
+                return
+
+            if not isinstance(quantidades, dict):
+                self._send_json(
+                    {"success": False, "message": "Quantidades inválidas."},
+                    HTTPStatus.BAD_REQUEST,
+                )
+                return
+
+            registro = obter_barema(tipo, code)
+            if not registro:
+                self._send_json(
+                    {
+                        "success": False,
+                        "message": "Este currículo ainda não foi consultado nesta modalidade. "
+                                   "Faça a consulta com o perfil desejado antes de salvar.",
+                    },
+                    HTTPStatus.NOT_FOUND,
+                )
+                return
+
+            # O servidor recalcula a partir das quantidades: nenhum total vindo
+            # do navegador é aceito diretamente.
+            atualizado = aplicar_quantidades_manuais(registro["barema"], tipo, quantidades)
+            if not atualizado:
+                self._send_json(
+                    {"success": False, "message": "Não foi possível recalcular o barema."},
+                    HTTPStatus.UNPROCESSABLE_ENTITY,
+                )
+                return
+
+            try:
+                gravou = atualizar_barema_ajustado(tipo, code, atualizado)
+            except Exception as exc:
+                self._send_json(
+                    {"success": False, "message": f"Erro ao gravar: {exc}"},
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+                return
+
+            if not gravou:
+                self._send_json(
+                    {"success": False, "message": "Nenhum registro foi atualizado."},
+                    HTTPStatus.NOT_FOUND,
+                )
+                return
+
+            self._send_json({
+                "success": True,
+                "message": "Pontuação atualizada no histórico.",
+                "nome": registro.get("nome"),
+                "total_limitado": atualizado.get("total_limitado"),
+                "total_bruto": atualizado.get("total_bruto"),
+            })
+            _try_sync_sheets()
             return
 
         elif self.path == "/api/sync-sheets":
