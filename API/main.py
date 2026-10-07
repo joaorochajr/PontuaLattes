@@ -1,4 +1,5 @@
 import base64
+import datetime
 import json
 import mimetypes
 import os
@@ -293,8 +294,26 @@ class ICCollectHandler(BaseHTTPRequestHandler):
 
             tipo_lattes = normalizar_tipo(payload.get("tipo", "ic"))
 
+            # Ano de ingresso na graduacao: so o barema AERI usa (edital 03/2026,
+            # item 10.2). Vazio e permitido; valor informado precisa ser um ano real.
+            ano_ingresso = None
+            bruto_ingresso = str(payload.get("ano_ingresso") or "").strip()
+            if bruto_ingresso and tipo_lattes == "aeri":
+                ano_maximo = datetime.date.today().year
+                if not (bruto_ingresso.isdigit() and 1990 <= int(bruto_ingresso) <= ano_maximo):
+                    self._send_json(
+                        {
+                            "success": False,
+                            "message": f"Ano de ingresso inválido: informe um ano entre 1990 e {ano_maximo}.",
+                            "code": None,
+                        },
+                        HTTPStatus.BAD_REQUEST,
+                    )
+                    return
+                ano_ingresso = int(bruto_ingresso)
+
             try:
-                resultado = buscaLattes(url_lattes, tipo_lattes)
+                resultado = buscaLattes(url_lattes, tipo_lattes, ano_ingresso)
                 status = HTTPStatus.OK if resultado.get("success") else HTTPStatus.BAD_GATEWAY
                 self._send_json(resultado, status)
                 if resultado.get("success"):

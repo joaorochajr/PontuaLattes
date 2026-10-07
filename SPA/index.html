@@ -56,6 +56,11 @@
 						<input type="radio" name="perfil-extensao" value="discente"> Discente/Candidato (até 20 pontos)
 					</label>
 				</div>
+				<div class="edital-subchoice" id="aeri-ingresso" hidden>
+					<label class="subchoice-label" for="ano-ingresso">Ano de ingresso na graduação (opcional):</label>
+					<input id="ano-ingresso" name="ano_ingresso" type="number" inputmode="numeric" min="1990" max="2100" step="1" placeholder="ex.: 2023" style="width: 8rem;">
+					<span class="helper-text">O edital AERI só pontua o que foi feito a partir do ingresso no curso atual. Em branco, vale o currículo inteiro.</span>
+				</div>
 				<p class="helper-text">
 					Informe a URL completa ou o código público do currículo Lattes.
 				</p>
@@ -131,21 +136,6 @@
 					</div>
 				</div>
 				<div id="barema-sections" class="barema-sections"></div>
-
-				<div id="salvar-panel" class="salvar-panel" hidden>
-					<div class="salvar-texto">
-						<strong>Registrar esta pontuação no histórico</strong>
-						<p>
-							A nota gravada na consulta considera apenas os indicadores públicos do CNPq.
-							Depois de enviar o PDF ou ajustar os campos, grave para que o histórico
-							reflita a pontuação completa.
-						</p>
-					</div>
-					<div class="salvar-acao">
-						<button id="salvar-barema" type="button">Salvar no histórico</button>
-						<span id="salvar-status" class="salvar-status" aria-live="polite"></span>
-					</div>
-				</div>
 
 				<div id="barema-observations" class="barema-observations"></div>
 			</article>

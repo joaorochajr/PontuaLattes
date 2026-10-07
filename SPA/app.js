@@ -44,6 +44,10 @@ function atualizarSubEscolhaExtensao() {
 	if (bloco) {
 		bloco.hidden = getEditalSelecionado() !== 'extensao';
 	}
+	const blocoIngresso = document.getElementById('aeri-ingresso');
+	if (blocoIngresso) {
+		blocoIngresso.hidden = getEditalSelecionado() !== 'aeri';
+	}
 }
 
 async function inicializarEditais() {
@@ -91,7 +95,6 @@ function resetResults() {
 	sugestoesPdf = null;
 	mostrarPainelPdf(false);
 	setPdfStatus('', '');
-	setSalvarStatus('', '');
 	renderAvisosPdf([]);
 	resultsSection.classList.remove('visible');
 	summaryList.innerHTML = '';
@@ -471,16 +474,6 @@ function renderBaremaAERI(barema) {
 		: '';
 }
 
-const salvarPanel = document.getElementById('salvar-panel');
-const salvarBotao = document.getElementById('salvar-barema');
-const salvarStatus = document.getElementById('salvar-status');
-
-function setSalvarStatus(tipo, mensagem) {
-	if (!salvarStatus) return;
-	salvarStatus.className = `salvar-status ${tipo}`;
-	salvarStatus.textContent = mensagem;
-}
-
 // Lê as quantidades digitadas, agrupadas por seção. Só quantidades são
 // enviadas — os pesos e tetos são aplicados no servidor.
 function coletarQuantidadesManuais() {
@@ -495,14 +488,14 @@ function coletarQuantidadesManuais() {
 	return porSecao;
 }
 
+// Grava no histórico a pontuação já ajustada pelo PDF. Chamada
+// automaticamente logo depois que o PDF é aplicado. Devolve a mensagem
+// de resultado para o chamador exibir junto do status do PDF.
 async function salvarNoHistorico() {
-	if (!lastResultado || !salvarBotao) return;
+	if (!lastResultado) return { ok: false, mensagem: '' };
 
 	const tipo = getTipoConsulta();
-	if (!tipo.startsWith('extensao_')) return;
-
-	salvarBotao.disabled = true;
-	setSalvarStatus('', 'Gravando...');
+	if (!tipo.startsWith('extensao_')) return { ok: false, mensagem: '' };
 
 	try {
 		const resposta = await fetch('/api/barema-manual', {
@@ -520,16 +513,13 @@ async function salvarNoHistorico() {
 			throw new Error(dados.message || 'Não foi possível gravar.');
 		}
 
-		setSalvarStatus('sucesso', `Histórico atualizado: ${formatNumber(dados.total_limitado)} pontos.`);
+		return {
+			ok: true,
+			mensagem: `Histórico atualizado: ${formatNumber(dados.total_limitado)} pontos.`,
+		};
 	} catch (erro) {
-		setSalvarStatus('erro', erro.message || 'Falha ao gravar no histórico.');
-	} finally {
-		salvarBotao.disabled = false;
+		return { ok: false, mensagem: erro.message || 'Falha ao gravar no histórico.' };
 	}
-}
-
-if (salvarBotao) {
-	salvarBotao.addEventListener('click', salvarNoHistorico);
 }
 
 const pdfPanel = document.getElementById('pdf-panel');
@@ -547,7 +537,6 @@ function setPdfStatus(tipo, mensagem) {
 
 function mostrarPainelPdf(visivel) {
 	if (pdfPanel) pdfPanel.hidden = !visivel;
-	if (salvarPanel) salvarPanel.hidden = !visivel;
 }
 
 function lerArquivoComoBase64(arquivo) {
@@ -626,11 +615,20 @@ async function enviarPdf(arquivo) {
 
 		const preenchidos = aplicarSugestoesPdf();
 		const titular = dados.nome ? ` (${dados.nome})` : '';
+
+		if (!preenchidos) {
+			setPdfStatus('sucesso', `PDF lido${titular}, mas não havia dados para as seções deste perfil.`);
+			return;
+		}
+
+		// Grava a pontuação completa no histórico assim que o PDF é aplicado.
+		setPdfStatus('', `PDF lido${titular}: ${preenchidos} campo(s) preenchido(s). Gravando no histórico...`);
+		const gravacao = await salvarNoHistorico();
 		setPdfStatus(
-			'sucesso',
-			preenchidos
-				? `PDF lido${titular}: ${preenchidos} campo(s) preenchido(s). Confira e ajuste se precisar.`
-				: `PDF lido${titular}, mas não havia dados para as seções deste perfil.`,
+			gravacao.ok ? 'sucesso' : 'erro',
+			gravacao.ok
+				? `PDF lido${titular}: ${preenchidos} campo(s) preenchido(s). ${gravacao.mensagem}`
+				: `PDF lido${titular}, mas o histórico não foi atualizado: ${gravacao.mensagem}`,
 		);
 	} catch (erro) {
 		setPdfStatus('erro', erro.message || 'Falha ao enviar o PDF.');
@@ -714,9 +712,6 @@ function recalcularBaremaEditavel() {
 
 	total = Math.round(total * 100) / 100;
 	statBaremaTotal.textContent = formatNumber(total);
-	if (salvarStatus && salvarStatus.classList.contains('sucesso')) {
-		setSalvarStatus('', 'Valores alterados — grave novamente para atualizar o histórico.');
-	}
 	const totalFinal = baremaSummary.querySelector('.barema-highlight-total strong');
 	if (totalFinal) totalFinal.textContent = formatNumber(total);
 }
@@ -872,7 +867,13 @@ form.addEventListener('submit', async (event) => {
 			headers: {
 				'Content-Type': 'application/json',
 			},
-			body: JSON.stringify({ url, tipo }),
+			body: JSON.stringify({
+				url,
+				tipo,
+				ano_ingresso: tipo === 'aeri'
+					? (document.getElementById('ano-ingresso')?.value || '').trim()
+					: '',
+			}),
 		});
 
 		const responseText = await response.text();

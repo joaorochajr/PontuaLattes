@@ -1,9 +1,11 @@
 import ast
 import re
+import time
 from datetime import date
 from html import unescape
 
 from database import (
+	get_editais,
 	registrar_barema,
 	registrar_barema_aeri,
 	registrar_barema_extensao_discente,
@@ -30,8 +32,38 @@ def _normalizar_pontuacao(valor):
 	return round(valor, 2)
 
 
+_JANELA_ANOS_IC = 5
+_cache_ano_edital_ic = {"valor": None, "expira_em": 0.0}
+
+
+def _ano_do_edital_ic():
+	# O Edital IC conta "os ultimos cinco anos" a partir do ano do proprio
+	# edital (edital 2026 -> producoes a partir de 2021). O ano vem do que foi
+	# cadastrado na pagina de admin; consulta em cache curto para nao ir ao
+	# banco varias vezes na mesma busca.
+	agora = time.monotonic()
+	if agora < _cache_ano_edital_ic["expira_em"]:
+		return _cache_ano_edital_ic["valor"]
+
+	ano = None
+	try:
+		edital = (get_editais() or {}).get("ic") or {}
+		achado = re.search(r"(?<!\d)(20\d{2})(?!\d)", str(edital.get("ano") or ""))
+		if achado:
+			ano = int(achado.group(1))
+	except Exception:
+		ano = None
+
+	_cache_ano_edital_ic["valor"] = ano
+	_cache_ano_edital_ic["expira_em"] = agora + 60
+	return ano
+
+
 def _obter_ano_minimo_barema():
-	return date.today().year - 5
+	# Sem edital cadastrado (ou ano invalido), mantem o comportamento antigo:
+	# cinco anos para tras a partir do ano atual.
+	ano_base = _ano_do_edital_ic() or date.today().year
+	return ano_base - _JANELA_ANOS_IC
 
 
 def _expandir_anos_ate_ano_vigente(anos):
@@ -512,7 +544,11 @@ def calcularBarema(resultado=None):
 	}
 
 
-def calcularBaremaAERI(resultado=None):
+def calcularBaremaAERI(resultado=None, ano_ingresso=None):
+	# Edital AERI (item 10.2): so pontua o que foi feito a partir do ingresso no
+	# curso de graduacao atual. O ano e informado pelo avaliador; sem ele, o
+	# curriculo e considerado por inteiro.
+	ano_minimo = ano_ingresso if isinstance(ano_ingresso, int) and ano_ingresso > 0 else 0
 	dados_lattes = getConteudo(resultado) if resultado is not None else conteudo_lattes
 
 	if not dados_lattes:
@@ -534,7 +570,7 @@ def calcularBaremaAERI(resultado=None):
 	qtd_apresentacoes = _somar_variaveis_por_ano(
 		variaveis_js, "barraAnosProducoesTecnicas",
 		["valoesApresentacoesDeTrabalhos"],
-		ano_minimo=0,
+		ano_minimo=ano_minimo,
 	)
 
 	participacoes_itens = {
@@ -551,27 +587,27 @@ def calcularBaremaAERI(resultado=None):
 	qtd_artigos_periodicos = _somar_variaveis_por_ano(
 		variaveis_js, "barraAnosProducoesBibliograficas",
 		["valoresArtigosPublicadosPeriodicos"],
-		ano_minimo=0,
+		ano_minimo=ano_minimo,
 	)
 	qtd_textos_jornais = _somar_variaveis_por_ano(
 		variaveis_js, "barraAnosProducoesBibliograficas",
 		["valoresArtigosResumidosPublicadosPeriodicos"],
-		ano_minimo=0,
+		ano_minimo=ano_minimo,
 	)
 	qtd_resumos_anais = _somar_variaveis_por_ano(
 		variaveis_js, "barraAnosProducoesBibliograficas",
 		["valoresTrabalhosResumidosPublicadosEventos"],
-		ano_minimo=0,
+		ano_minimo=ano_minimo,
 	)
 	qtd_trabalhos_anais = _somar_variaveis_por_ano(
 		variaveis_js, "barraAnosProducoesBibliograficas",
 		["valoresTrabalhosPublicadosEventos"],
-		ano_minimo=0,
+		ano_minimo=ano_minimo,
 	)
 	qtd_producao_artistica = _somar_series_por_ano(
 		variaveis_js, "barraAnosProducoesCulturais",
 		[("cultur",), ("artist",)],
-		ano_minimo=0,
+		ano_minimo=ano_minimo,
 	)
 
 	producao_itens = {
@@ -611,6 +647,11 @@ def calcularBaremaAERI(resultado=None):
 	)
 
 	observacoes = [
+		(
+			f"Considerado o que foi produzido a partir de {ano_minimo} (ano de ingresso informado)."
+			if ano_minimo
+			else "Ano de ingresso não informado: foi considerado o currículo inteiro. O edital só pontua o que é posterior ao ingresso na graduação."
+		),
 		"Seção 'Representação/Liderança Estudantil' não pode ser extraída automaticamente do Lattes — preencha manualmente.",
 		"Seção 'Participação em Programa Acadêmico/Estágios' não pode ser extraída automaticamente do Lattes — preencha manualmente.",
 		"Itens como premiações, cursos de idioma, participação em eventos da AERI e outros não são identificados automaticamente.",
@@ -761,6 +802,15 @@ def _coletar_quantidades_extensao(variaveis_js, preview_html, index_html):
 		),
 		(("programa", "computador"),),
 	)
+	# Programa de computador COM registro (INPI) nao entra na producao tecnica:
+	# o Lattes o lista em "Patentes e registros", e o grafico o agrupa em
+	# "Outras patentes e registros" (junto de desenho industrial e topografia
+	# de circuito, que o grafico nao separa).
+	quantidades["programa_computador"] += _somar_grupo(
+		variaveis_js,
+		_ANOS_PATENTES,
+		("valoesOutrasPatentesRegistros",),
+	)
 	quantidades["produtos"] = _somar_grupo(
 		variaveis_js,
 		_ANOS_TECNICAS,
@@ -890,7 +940,7 @@ _EXTENSAO_PRODUCAO_DOCENTE = (
 	("Livros organizados ou publicados", "livros", 2, None),
 	("Capítulos de livro", "capitulos", 1.5, None),
 	("Apresentação de trabalho", "apresentacao_trabalho", 1, None),
-	("Programa de computador sem registro", "programa_computador", 0.5, None),
+	("Programa de computador (com ou sem registro)", "programa_computador", 0.5, None),
 	("Produtos", "produtos", 1, None),
 	("Processos ou técnica", "processos", 1, None),
 	("Trabalhos técnicos", "trabalhos_tecnicos", 1, None),
@@ -928,7 +978,7 @@ _EXTENSAO_PRODUCAO_DISCENTE = (
 	("Livros organizados ou publicados", "livros", 2, None),
 	("Capítulos de livro", "capitulos", 2, None),
 	("Apresentação de trabalho", "apresentacao_trabalho", 1, None),
-	("Programa de computador", "programa_computador", 0.5, None),
+	("Programa de computador (com ou sem registro)", "programa_computador", 0.5, None),
 	("Produtos", "produtos", 0.5, None),
 	("Processos ou técnica", "processos", 0.5, None),
 	("Trabalhos técnicos", "trabalhos_tecnicos", 0.5, None),
@@ -1226,7 +1276,7 @@ def _registrar_barema_por_tipo(tipo, consulta_id, conteudo):
 
 
 # Busca os dados no service
-def buscaLattes(url, tipo="ic"):
+def buscaLattes(url, tipo="ic", ano_ingresso=None):
 	code = getLattesCode(url)
 
 	if not code or _is_request_error(code):
@@ -1241,7 +1291,7 @@ def buscaLattes(url, tipo="ic"):
 		}
 		conteudo = getConteudo(resultado)
 		conteudo["barema"] = calcularBarema()
-		conteudo["barema_aeri"] = calcularBaremaAERI()
+		conteudo["barema_aeri"] = calcularBaremaAERI(ano_ingresso=ano_ingresso)
 		conteudo["barema_extensao_docente"] = calcularBaremaExtensaoDocente()
 		conteudo["barema_extensao_discente"] = calcularBaremaExtensaoDiscente()
 		registrar_consulta(url, conteudo, tipo)
@@ -1263,7 +1313,7 @@ def buscaLattes(url, tipo="ic"):
 
 	conteudo = getConteudo(resultado)
 	conteudo["barema"] = calcularBarema()
-	conteudo["barema_aeri"] = calcularBaremaAERI()
+	conteudo["barema_aeri"] = calcularBaremaAERI(ano_ingresso=ano_ingresso)
 	conteudo["barema_extensao_docente"] = calcularBaremaExtensaoDocente()
 	conteudo["barema_extensao_discente"] = calcularBaremaExtensaoDiscente()
 	consulta_id = registrar_consulta(url, conteudo, tipo)
